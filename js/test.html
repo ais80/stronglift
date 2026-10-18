@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>StrongLift — self-tests</title>
+  <style>
+    body { font-family: -apple-system, Arial, sans-serif; background: #121418; color: #eef0f3; padding: 20px; }
+    .pass { color: #43c17a; }
+    .fail { color: #e5484d; font-weight: 700; }
+    .line { padding: 3px 0; font-size: 0.95rem; }
+    h1 { font-size: 1.2rem; }
+    #summary { margin-top: 16px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>StrongLift — logic self-tests</h1>
+  <p style="opacity:.7">
+    Serve this over http(s) (not <code>file://</code>) — ES module imports are blocked on the
+    file protocol. e.g. <code>npx serve .</code> or <code>python -m http.server</code> from the
+    project root, then open <code>/js/test.html</code>.
+  </p>
+  <div id="out"></div>
+  <div id="summary"></div>
+
+  <script type="module">
+    import { roundToStep, isSuccess, nextWeight, applyWorkoutResult, buildWorkout } from "./program.js";
+    import { platesFor, warmupSets, estimate1RM } from "./calc.js";
+
+    const out = document.getElementById("out");
+    let pass = 0, fail = 0;
+
+    function assertEq(label, actual, expected) {
+      const ok = JSON.stringify(actual) === JSON.stringify(expected);
+      const div = document.createElement("div");
+      div.className = "line " + (ok ? "pass" : "fail");
+      div.textContent = `${ok ? "PASS" : "FAIL"} — ${label}` +
+        (ok ? "" : ` (expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)})`);
+      out.appendChild(div);
+      ok ? pass++ : fail++;
+    }
+
+    // --- roundToStep ---
+    assertEq("roundToStep nearest", roundToStep(61, 2.5), 60);
+    assertEq("roundToStep down", roundToStep(63.9, 2.5, "down"), 62.5);
+    assertEq("roundToStep up", roundToStep(60.1, 2.5, "up"), 62.5);
+
+    // --- isSuccess ---
+    assertEq("isSuccess all hit", isSuccess({ sets: [{ reps: 5, target: 5 }, { reps: 6, target: 5 }] }), true);
+    assertEq("isSuccess one miss", isSuccess({ sets: [{ reps: 5, target: 5 }, { reps: 3, target: 5 }] }), false);
+    assertEq("isSuccess empty", isSuccess({ sets: [] }), false);
+
+    // --- nextWeight: success increments ---
+    {
+      const ex = { increment: 2.5, deloadFloor: 20 };
+      const settings = { deloadPct: 10, failuresBeforeDeload: 3 };
+      const r = nextWeight(ex, { currentWeight: 60, consecutiveFailures: 0 }, true, settings);
+      assertEq("nextWeight success +increment", r, { currentWeight: 62.5, consecutiveFailures: 0, deloaded: false });
+    }
+
+    // --- nextWeight: failure under threshold just increments counter ---
+    {
+      const ex = { increment: 2.5, deloadFloor: 20 };
+      const settings = { deloadPct: 10, failuresBeforeDeload: 3 };
+      const r = nextWeight(ex, { currentWeight: 60, consecutiveFailures: 1 }, false, settings);
+      assertEq("nextWeight 2nd failure holds weight", r, { currentWeight: 60, consecutiveFailures: 2, deloaded: false });
+    }
+
+    // --- nextWeight: 3rd consecutive failure deloads 10%, rounded down to step ---
+    {
+      const ex = { increment: 2.5, deloadFloor: 20 };
+      const settings = { deloadPct: 10, failuresBeforeDeload: 3 };
+      // 100 * 0.9 = 90 exactly -> stays 90 (already a multiple of 2.5)
+      const r = nextWeight(ex, { currentWeight: 100, consecutiveFailures: 2 }, false, settings);
+      assertEq("nextWeight deload at 3rd failure", r, { currentWeight: 90, consecutiveFailures: 0, deloaded: true });
+    }
+
+    // --- nextWeight: deload blocked by floor ---
+    {
+      const ex = { increment: 2.5, deloadFloor: 20 };
+      const settings = { deloadPct: 10, failuresBeforeDeload: 3 };
+      // 21 * 0.9 = 18.9 -> rounds down to 17.5, below floor 20 -> stays at 21
+      const r = nextWeight(ex, { currentWeight: 21, consecutiveFailures: 2 }, false, settings);
+      assertEq("nextWeight deload blocked by floor", r, { currentWeight: 21, consecutiveFailures: 0, deloaded: false });
+    }
+
+    // --- plate calculator ---
+    {
+      const plates = [
+        { weight: 25, count: 2 }, { weight: 20, count: 2 }, { weight: 15, count: 2 },
+        { weight: 10, count: 4 }, { weight: 5, count: 4 }, { weight: 2.5, count: 4 }, { weight: 1.25, count: 2 },
+      ];
+      // 100kg target, 20kg bar -> 40kg/side -> 25+10+5
+      const r = platesFor(100, 20, plates);
+      assertEq("platesFor 100kg exact", { exact: r.exact, achievedWeight: r.achievedWeight },
+        { exact: true, achievedWeight: 100 });
+      // Greedy largest-first: 40kg/side = one 25 + one 15 (15 is available before needing 10+5).
+      assertEq("platesFor 100kg combo", r.perSide,
+        [{ weight: 25, count: 1 }, { weight: 15, count: 1 }]);
+    }
+    {
+      // Unreachable exact target with this inventory (e.g. +1kg) -> not exact, closest below.
+      const plates = [{ weight: 20, count: 2 }];
+      const r = platesFor(61, 20, plates); // 20.5/side not reachable with only 20kg plates
+      assertEq("platesFor unreachable flags inexact", r.exact, false);
+    }
+
+    // --- warmup sets ---
+    {
+      const w = warmupSets(100, 20);
+      assertEq("warmupSets count > 0 for a real work set", w.length > 0, true);
+      assertEq("warmupSets starts with empty bar", w[0], { weight: 20, reps: 5 });
+      assertEq("warmupSets never reaches/exceeds work weight", w.every(s => s.weight < 100), true);
+    }
+    {
+      const w = warmupSets(22.5, 20); // barely above the bar -> skip warmups
+      assertEq("warmupSets skipped near empty bar", w, []);
+    }
+
+    // --- e1RM (Epley) ---
+    assertEq("estimate1RM 1 rep", estimate1RM(100, 1), 100);
+    assertEq("estimate1RM 5 reps", estimate1RM(100, 5), 116.67);
+
+    // --- buildWorkout / applyWorkoutResult integration ---
+    {
+      const state = {
+        settings: { deloadPct: 10, failuresBeforeDeload: 3 },
+        exercises: [
+          { id: "squat", name: "Squat", type: "barbell", increment: 2.5, deloadFloor: 20, setsReps: { sets: 5, reps: 5 }, warmupPreset: "bar_main", startWeight: 20 },
+        ],
+        programDays: { A: ["squat"], B: ["squat"] },
+        progress: { squat: { currentWeight: 60, consecutiveFailures: 0 } },
+        history: [],
+        nextDay: "A",
+      };
+      const workout = buildWorkout("A", state);
+      assertEq("buildWorkout assembles today's lifts", workout.length, 1);
+      assertEq("buildWorkout uses current progress weight", workout[0].targetWeight, 60);
+
+      const entries = [{
+        exerciseId: "squat",
+        targetWeight: 60,
+        sets: [1,2,3,4,5].map(() => ({ reps: 5, target: 5 })),
+      }];
+      const next = applyWorkoutResult(state, "A", entries, 1800);
+      assertEq("applyWorkoutResult bumps weight on success", next.progress.squat.currentWeight, 62.5);
+      assertEq("applyWorkoutResult records history", next.history.length, 1);
+      assertEq("applyWorkoutResult flips nextDay", next.nextDay, "B");
+    }
+
+    const summary = document.getElementById("summary");
+    summary.textContent = `${pass} passed, ${fail} failed`;
+    summary.className = fail ? "fail" : "pass";
+  </script>
+</body>
+</html>

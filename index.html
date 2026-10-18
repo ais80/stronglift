@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>StrongLift</title>
+  <meta name="description" content="A simple 5×5 barbell workout tracker.">
+  <meta name="theme-color" content="#121418">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-180.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="app" class="app-shell" role="main"></div>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a class="nav-item" data-route="home" href="#/home">
+      <span class="nav-icon" aria-hidden="true">🏠</span><span class="nav-label">Home</span>
+    </a>
+    <a class="nav-item" data-route="history" href="#/history">
+      <span class="nav-icon" aria-hidden="true">📋</span><span class="nav-label">History</span>
+    </a>
+    <a class="nav-item" data-route="progress" href="#/progress">
+      <span class="nav-icon" aria-hidden="true">📈</span><span class="nav-label">Progress</span>
+    </a>
+    <a class="nav-item" data-route="exercises" href="#/exercises">
+      <span class="nav-icon" aria-hidden="true">🏋️</span><span class="nav-label">Lifts</span>
+    </a>
+    <a class="nav-item" data-route="settings" href="#/settings">
+      <span class="nav-icon" aria-hidden="true">⚙️</span><span class="nav-label">Settings</span>
+    </a>
+  </nav>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
