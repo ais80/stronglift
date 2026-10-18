@@ -50,6 +50,7 @@ function makeEntry(exercise, state, { isMainSlot, swappedFrom }) {
     cue: exercise.cue || "",
     repUnit: exercise.repUnit || "reps",
     alternates: exercise.alternates || [],
+    equivalentTo: exercise.equivalentTo || null, // e.g. Smith Squat -> "squat" — also progresses that lift
     isMainSlot,
     swappedFrom, // set when this slot was swapped from a main lift, for a small UI note
     sets: Array.from({ length: sets }, () => ({ reps: null })),
@@ -530,7 +531,13 @@ function buildExerciseBlockHtml(entry, exIdx, state, openTips) {
   const swapNote = entry.swappedFrom
     ? `<div class="card-sub swap-note">Standing in for ${escapeHtml(
         state.exercises.find((e) => e.id === entry.swappedFrom)?.name || entry.swappedFrom
-      )} today</div>`
+      )} today${
+        entry.equivalentTo
+          ? ` — hitting these sets also progresses ${escapeHtml(
+              state.exercises.find((e) => e.id === entry.equivalentTo)?.name || entry.equivalentTo
+            )}`
+          : ""
+      }</div>`
     : "";
   const scaledNoteHtml = entry.scaledNote
     ? `<div class="card-sub swap-note">${escapeHtml(entry.scaledNote)}</div>`

@@ -219,8 +219,31 @@ logs, so this is schema + UI.
   increment/warmupPreset/cue) for **this session only** — `programDays` is untouched,
   and the original lift's `progress` entry is simply not updated this session. The
   alternate's own `progress`/history is used and updated normally through the existing
-  engine (no special-casing).
+  engine (no special-casing) — **except** a machine-equivalent (`equivalentTo` set, see
+  below), which is a deliberate exception: it also feeds its hit/miss into the linked
+  lift's own progression.
 - Locks once a set's logged for that slot (no re-swap mid-stream, same rule as below).
+
+### Machine equivalents (Smith machine etc.)
+- An exercise can carry `equivalentTo: <exerciseId>` + `loadMultiplier: number`
+  (editable in Lifts, shown only when `equivalentTo` is set). Seeded for Squat/Bench/
+  OHP's Smith machine alternates (1.15/1.10/1.15 — rule-of-thumb starting points, not a
+  measured fact about any specific machine).
+- **First-ever swap-in** (no `state.history` entry for that exercise id yet): its
+  starting weight is computed as `equivalentStartWeight(linkedLift.progress.
+  currentWeight, loadMultiplier, ownIncrement)` (pure helper in `program.js`, unit
+  tested) and written straight to its `progress` entry before the draft is built, so
+  both the displayed weight and the later progression math use it as the real
+  baseline. A one-time note explains the number; it doesn't reappear once real history
+  exists for that exercise.
+- **Every session after that** (`applyWorkoutResult`): alongside progressing its own
+  weight normally, if its exercise has `equivalentTo` set, the *same* success/fail
+  result is also run through `nextWeight` for the linked lift, using the linked lift's
+  own current weight/increment/deload-floor (not derived from the machine's number),
+  and written to the linked lift's `progress` entry. The history entry records this as
+  `linked: { exerciseId, nextWeight, deloaded }` for the History/Workout UI to surface.
+  **One-directional**: a normal session on the free-bar lift itself never touches the
+  machine-equivalent's progress.
 
 ### Accessory block
 - Collapsible "Optional — if you have time" section after the main lifts, before

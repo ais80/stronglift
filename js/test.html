@@ -158,6 +158,43 @@
       assertEq("applyWorkoutResult flips nextDay", next.nextDay, "B");
     }
 
+    // --- applyWorkoutResult: machine-equivalent feeds the linked lift's progression ---
+    {
+      const state = {
+        settings: { deloadPct: 10, failuresBeforeDeload: 3 },
+        exercises: [
+          { id: "squat", name: "Squat", type: "barbell", increment: 2.5, deloadFloor: 20, setsReps: { sets: 5, reps: 5 }, startWeight: 20 },
+          { id: "smith_squat", name: "Smith Machine Squat", type: "bodyweight", increment: 2.5, deloadFloor: 20, setsReps: { sets: 5, reps: 5 }, startWeight: 20, equivalentTo: "squat" },
+        ],
+        programDays: { A: ["squat"], B: ["squat"] },
+        progress: {
+          squat: { currentWeight: 69, consecutiveFailures: 0 },
+          smith_squat: { currentWeight: 80, consecutiveFailures: 0 },
+        },
+        history: [],
+        nextDay: "A",
+      };
+      const hitEntries = [{
+        exerciseId: "smith_squat",
+        targetWeight: 80,
+        sets: [1, 2, 3, 4, 5].map(() => ({ reps: 5, target: 5 })),
+      }];
+      const next = applyWorkoutResult(state, "A", hitEntries, 1800);
+      assertEq("smith success bumps smith's own weight", next.progress.smith_squat.currentWeight, 82.5);
+      assertEq("smith success ALSO bumps the linked Squat's weight", next.progress.squat.currentWeight, 71.5);
+      assertEq("history records the linked result", next.history[0].entries[0].linked, { exerciseId: "squat", nextWeight: 71.5, deloaded: false });
+
+      // A plain Squat session (not equivalentTo-linked) must NOT touch smith_squat.
+      const plainSquatEntries = [{
+        exerciseId: "squat",
+        targetWeight: 69,
+        sets: [1, 2, 3, 4, 5].map(() => ({ reps: 5, target: 5 })),
+      }];
+      const next2 = applyWorkoutResult(state, "A", plainSquatEntries, 1800);
+      assertEq("a direct Squat session doesn't touch smith_squat", next2.progress.smith_squat.currentWeight, 80);
+      assertEq("...but does bump Squat itself", next2.progress.squat.currentWeight, 71.5);
+    }
+
     const summary = document.getElementById("summary");
     summary.textContent = `${pass} passed, ${fail} failed`;
     summary.className = fail ? "fail" : "pass";

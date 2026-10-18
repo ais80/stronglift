@@ -1,7 +1,7 @@
 // service-worker.js — offline cache for the app shell. All paths are relative so this
 // works unmodified whether served from a domain root or a GitHub Pages /<repo>/ subpath
 // (the scope is wherever this file is registered from).
-const CACHE_NAME = "stronglift-cache-v4";
+const CACHE_NAME = "stronglift-cache-v5";
 
 const PRECACHE_URLS = [
   "./",

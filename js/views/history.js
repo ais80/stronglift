@@ -57,6 +57,13 @@ function renderDetail(container, state, sessionId, ctx) {
         : entry.success
           ? `<div class="card-sub">Next: ${fmtWeight(entry.nextWeight, state.settings.units)}</div>`
           : "";
+      const linkedNote = entry.linked
+        ? (() => {
+            const linkedName = state.exercises.find((e) => e.id === entry.linked.exerciseId)?.name || entry.linked.exerciseId;
+            const verb = entry.linked.deloaded ? "Deloaded" : "Next";
+            return `<div class="card-sub">Also progressed ${escapeHtml(linkedName)} — ${verb}: ${fmtWeight(entry.linked.nextWeight, state.settings.units)}</div>`;
+          })()
+        : "";
       return `<div class="card">
         <div class="card-row">
           <span class="${resultClass}">${resultIcon} ${escapeHtml(name)}</span>
@@ -64,6 +71,7 @@ function renderDetail(container, state, sessionId, ctx) {
         </div>
         <div class="card-sub">Sets (reps/target): ${setsText}</div>
         ${deloadNote}
+        ${linkedNote}
       </div>`;
     })
     .join("");

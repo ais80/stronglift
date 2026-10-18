@@ -134,6 +134,34 @@ export function applyWorkoutResult(state, day, entries, durationSecs) {
       currentWeight: result.currentWeight,
       consecutiveFailures: result.consecutiveFailures,
     };
+
+    // Machine-assisted equivalents (e.g. a Smith machine standing in for a free-bar
+    // lift) feed their result back into the lift they stand in for too -- the whole
+    // point of load-matching them is that a successful session on one is equivalent
+    // effort on the other, so it should count as progress there as well. Each keeps
+    // its own weight/scale (the linked lift's own increment/floor, not derived from
+    // the machine's), only the success/fail signal is shared.
+    let linked = null;
+    if (exercise.equivalentTo) {
+      const linkedExercise = state.exercises.find((e) => e.id === exercise.equivalentTo);
+      if (linkedExercise) {
+        const linkedPrior = progress[linkedExercise.id] || {
+          currentWeight: linkedExercise.startWeight,
+          consecutiveFailures: 0,
+        };
+        const linkedResult = nextWeight(linkedExercise, linkedPrior, success, state.settings);
+        progress[linkedExercise.id] = {
+          currentWeight: linkedResult.currentWeight,
+          consecutiveFailures: linkedResult.consecutiveFailures,
+        };
+        linked = {
+          exerciseId: linkedExercise.id,
+          nextWeight: linkedResult.currentWeight,
+          deloaded: linkedResult.deloaded,
+        };
+      }
+    }
+
     historyEntries.push({
       exerciseId: entry.exerciseId,
       targetWeight: entry.targetWeight,
@@ -141,6 +169,7 @@ export function applyWorkoutResult(state, day, entries, durationSecs) {
       success,
       deloaded: result.deloaded,
       nextWeight: result.currentWeight,
+      linked,
     });
   }
 
