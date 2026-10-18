@@ -2,7 +2,7 @@
 // Numbers here are the generic, standard 5x5 parameters (see BUILD_PLAN.md "Phase R"
 // table) — not anything copied from a specific app's source or assets.
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export function defaultSettings() {
   return {
@@ -58,7 +58,7 @@ export function defaultExercises(barWeight = 20) {
       deloadFloor: 20,
       repUnit: "reps",
       cue: "Bar on your upper back, feet shoulder-width. Brace your core, break at the hips and knees together, keep your chest up and knees tracking over your toes.",
-      alternates: ["leg_press", "goblet_squat", "hack_squat"],
+      alternates: ["leg_press", "goblet_squat", "hack_squat", "smith_squat"],
     },
     {
       id: "bench",
@@ -71,7 +71,7 @@ export function defaultExercises(barWeight = 20) {
       deloadFloor: 20,
       repUnit: "reps",
       cue: "Grip just wider than shoulders, shoulder blades pulled together and down. Lower to your chest with control, drive through your feet, press back up.",
-      alternates: ["db_bench", "pushups", "machine_chest_press"],
+      alternates: ["db_bench", "pushups", "machine_chest_press", "smith_bench"],
     },
     {
       id: "row",
@@ -97,7 +97,7 @@ export function defaultExercises(barWeight = 20) {
       deloadFloor: 20,
       repUnit: "reps",
       cue: "Bar at collarbone height, grip just outside shoulders. Brace your core, press straight up, tuck your head through at the top.",
-      alternates: ["db_shoulder_press", "machine_shoulder_press"],
+      alternates: ["db_shoulder_press", "machine_shoulder_press", "smith_press"],
     },
     {
       id: "deadlift",
@@ -201,6 +201,36 @@ export function defaultExercises(barWeight = 20) {
       startWeight: barWeight, increment: 5, setsReps: { sets: 1, reps: 5 },
       warmupPreset: "bar_pull", repUnit: "reps", alternates: [],
       cue: "Set pins just below knee height. Flat back, brace, drive through your legs and hips to lock out.",
+    },
+    // Smith machine variants — for when the power rack is occupied. An angled/
+    // counterbalanced Smith machine takes the stabilizing work out of the lift (fixed
+    // bar path, often a counterweight), so the same displayed weight feels lighter
+    // than free weight. equivalentTo/loadMultiplier (editable in Lifts) tell workout.js
+    // to pick its FIRST-ever working weight as that multiple of today's free-bar
+    // weight, rounded to its own increment -- after that one time it progresses
+    // completely independently, same as any other alternate. The multipliers are the
+    // commonly-cited rule-of-thumb starting points, not a measured fact about any
+    // specific machine -- nudge them in Lifts once you know how yours actually feels.
+    {
+      id: "smith_squat", name: "Smith Machine Squat", type: "bodyweight",
+      startWeight: barWeight, increment: 2.5, setsReps: { sets: 5, reps: 5 },
+      warmupPreset: "bar_main", repUnit: "reps", alternates: [],
+      equivalentTo: "squat", loadMultiplier: 1.15,
+      cue: "Fixed bar path does the balancing for you, so it needs more load to match a free squat — start ~15% heavier than your free-bar weight. Feet slightly forward of the bar on an angled machine, same depth and brace as a free squat.",
+    },
+    {
+      id: "smith_bench", name: "Smith Machine Bench Press", type: "bodyweight",
+      startWeight: barWeight, increment: 2.5, setsReps: { sets: 5, reps: 5 },
+      warmupPreset: "bar_main", repUnit: "reps", alternates: [],
+      equivalentTo: "bench", loadMultiplier: 1.1,
+      cue: "Less stabilizing work than a free bench even before the machine, so the load bump is smaller — start ~10% heavier than your free-bar weight. Set the bar path over your lower chest, same tempo as free bench.",
+    },
+    {
+      id: "smith_press", name: "Smith Machine Overhead Press", type: "bodyweight",
+      startWeight: barWeight, increment: 2.5, setsReps: { sets: 5, reps: 5 },
+      warmupPreset: "bar_main", repUnit: "reps", alternates: [],
+      equivalentTo: "press", loadMultiplier: 1.15,
+      cue: "No core/balance demand to keep the bar overhead on a fixed path — start ~15% heavier than your free-bar weight. Press straight up along the machine's track, brace the same as you would free-standing.",
     },
   ];
 

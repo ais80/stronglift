@@ -23,7 +23,7 @@
   <div id="summary"></div>
 
   <script type="module">
-    import { roundToStep, isSuccess, nextWeight, applyWorkoutResult, buildWorkout, effectiveSets } from "./program.js";
+    import { roundToStep, isSuccess, nextWeight, applyWorkoutResult, buildWorkout, effectiveSets, equivalentStartWeight } from "./program.js";
     import { platesFor, warmupSets, estimate1RM } from "./calc.js";
 
     const out = document.getElementById("out");
@@ -121,6 +121,11 @@
     assertEq("effectiveSets 3x5 caps at 3", effectiveSets(5, "3x5"), 3);
     assertEq("effectiveSets 3x5 never adds to a 1-set lift", effectiveSets(1, "3x5"), 1);
     assertEq("effectiveSets unknown scheme defaults to original", effectiveSets(5, "bogus"), 5);
+
+    // --- equivalentStartWeight (Smith machine etc.) ---
+    assertEq("equivalentStartWeight scales and rounds", equivalentStartWeight(69, 1.15, 2.5), 80);
+    assertEq("equivalentStartWeight 10% bench-style multiplier", equivalentStartWeight(60, 1.1, 2.5), 65);
+    assertEq("equivalentStartWeight multiplier 1 is a no-op (rounded)", equivalentStartWeight(61, 1, 2.5), 60);
 
     // --- e1RM (Epley) ---
     assertEq("estimate1RM 1 rep", estimate1RM(100, 1), 100);

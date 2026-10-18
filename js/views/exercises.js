@@ -46,6 +46,9 @@ export async function render(container, state, params, ctx) {
         return { ...s, exercises, progress };
       } else if (key === "cue") {
         ex.cue = value;
+      } else if (key === "loadMultiplier") {
+        const m = Number(value);
+        ex.loadMultiplier = m > 0 ? m : null;
       }
 
       exercises[idx] = ex;
@@ -123,6 +126,8 @@ export async function render(container, state, params, ctx) {
         alternates: [],
         cue: "",
         repUnit: "reps",
+        equivalentTo: null,
+        loadMultiplier: null,
       };
       const progress = { ...s.progress, [id]: { currentWeight: exercise.startWeight, consecutiveFailures: 0 } };
       return { ...s, exercises: [...s.exercises, exercise], progress };
@@ -173,6 +178,15 @@ function renderCard(ex, idx, state) {
       <label>Form cue (shown as "Tips" during a workout)</label>
       <input type="text" data-field="cue" data-idx="${idx}" value="${escapeHtml(ex.cue || "")}" placeholder="e.g. Brace your core, keep your chest up&hellip;">
     </div>
+    ${
+      ex.equivalentTo
+        ? `<div class="field">
+      <label>Load multiplier vs ${escapeHtml(state.exercises.find((e2) => e2.id === ex.equivalentTo)?.name || ex.equivalentTo)}
+        (first-time starting weight only, then progresses on its own)</label>
+      <input type="number" step="0.05" min="0.5" max="3" data-field="loadMultiplier" data-idx="${idx}" value="${ex.loadMultiplier ?? ""}">
+    </div>`
+        : ""
+    }
     <div class="field">
       <label>Alternates (swap-in options when long-pressed during a workout)</label>
       <div class="card-row">

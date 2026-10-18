@@ -26,6 +26,18 @@ export function effectiveSets(originalSets, scheme) {
   return originalSets;
 }
 
+/**
+ * Suggested starting weight for a machine-assisted equivalent of a free-bar lift (e.g.
+ * a Smith machine) the first time it's swapped in: the linked lift's current weight
+ * scaled up by the machine's load multiplier, rounded to the machine exercise's own
+ * increment. Only meant to seed a sensible first weight — after that, the machine
+ * exercise progresses independently like any other alternate, not derived from this
+ * again.
+ */
+export function equivalentStartWeight(linkedWeight, loadMultiplier, step) {
+  return roundToStep(linkedWeight * loadMultiplier, step);
+}
+
 export function round2(n) {
   return Math.round(n * 100) / 100;
 }

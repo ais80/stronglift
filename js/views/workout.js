@@ -1,5 +1,5 @@
 // views/workout.js — the live workout screen: the core loop of the app.
-import { buildWorkout, applyWorkoutResult, effectiveSets } from "../program.js";
+import { buildWorkout, applyWorkoutResult, effectiveSets, equivalentStartWeight } from "../program.js";
 import { platesFor, warmupSets } from "../calc.js";
 import { save, update } from "../state.js";
 import { fmtWeight, escapeHtml } from "../util.js";
@@ -226,7 +226,31 @@ export async function render(container, state, params, ctx) {
     if (!newEx) return;
     const entry = draft.entries[exIdx];
     const swappedFrom = entry.swappedFrom || entry.exerciseId;
+
+    // Machine-assisted equivalents (e.g. a Smith machine standing in for a free-bar
+    // lift) get their first-ever working weight scaled off today's free-bar weight,
+    // rather than whatever stale/default weight they'd otherwise start from — but only
+    // the first time; once there's real performance on it, that's what drives things,
+    // same as any other independently-tracked alternate.
+    let scaledNote = null;
+    if (newEx.equivalentTo && newEx.loadMultiplier) {
+      const everUsed = state.history.some((h) => h.entries.some((e) => e.exerciseId === newEx.id));
+      if (!everUsed) {
+        const linkedWeight = (state.progress[newEx.equivalentTo] || {}).currentWeight;
+        if (linkedWeight != null) {
+          const suggested = equivalentStartWeight(linkedWeight, newEx.loadMultiplier, newEx.increment);
+          state = update((s) => ({
+            ...s,
+            progress: { ...s.progress, [newEx.id]: { currentWeight: suggested, consecutiveFailures: 0 } },
+          }));
+          const linkedName = state.exercises.find((e) => e.id === newEx.equivalentTo)?.name || newEx.equivalentTo;
+          scaledNote = `First time on this — started at ${fmtWeight(suggested, state.settings.units)} (${linkedName} × ${newEx.loadMultiplier}). Tune the multiplier in Lifts if it feels off.`;
+        }
+      }
+    }
+
     draft.entries[exIdx] = makeEntry(newEx, state, { isMainSlot: true, swappedFrom });
+    if (scaledNote) draft.entries[exIdx].scaledNote = scaledNote;
     persistDraft(draft);
     paintBody();
   }
@@ -508,6 +532,9 @@ function buildExerciseBlockHtml(entry, exIdx, state, openTips) {
         state.exercises.find((e) => e.id === entry.swappedFrom)?.name || entry.swappedFrom
       )} today</div>`
     : "";
+  const scaledNoteHtml = entry.scaledNote
+    ? `<div class="card-sub swap-note">${escapeHtml(entry.scaledNote)}</div>`
+    : "";
 
   const tipsOpen = openTips.has(exIdx);
   const tipsHtml = entry.cue
@@ -527,6 +554,7 @@ function buildExerciseBlockHtml(entry, exIdx, state, openTips) {
       <span class="exercise-weight">${fmtWeight(entry.targetWeight, state.settings.units)}</span>
     </div>
     ${swapNote}
+    ${scaledNoteHtml}
     ${tipsHtml}
     ${isBarbell ? `<div class="plates-row">${platesText}${warnText}</div>` : ""}
     ${

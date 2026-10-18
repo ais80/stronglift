@@ -17,6 +17,12 @@ no account, no server — your data lives in your browser (`localStorage`).
   an alternative (rack/bench busy?) — curated suggestions per lift plus your full list.
   The substitute gets its own independent weight/history; your original lift's
   progression just sits out that session, untouched.
+- **Smith machine equivalents**: Squat/Bench/Overhead Press each have a Smith machine
+  alternate. The *first* time you swap to one, its starting weight is auto-scaled up
+  from today's free-bar weight (+15% squat/press, +10% bench — rough rule-of-thumb
+  starting points, tune the multiplier in Lifts) to account for the machine's fixed bar
+  path doing the stabilizing work for you. After that it progresses completely on its
+  own, same as any other alternate.
 - **Optional accessory work**: an "if you have time" block at the end of a workout —
   quick-add Plank, Face Pulls, Bicep Curls, Tricep Pushdown, Hanging Leg Raise (or
   anything else), fully tracked just like a main lift.

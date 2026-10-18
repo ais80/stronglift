@@ -52,6 +52,22 @@ export function migrate(state) {
     }
   }
 
+  // v2 -> v3: added Smith-machine alternates for squat/bench/press. The loop above
+  // adds the new exercises themselves, but an existing user's own squat/bench/press
+  // entries need the new ids appended to their *alternates* list too -- append-only
+  // and de-duped, so a user's own edits to that list (via Lifts) are never clobbered.
+  for (const seedEx of seed.exercises) {
+    if (!seedEx.equivalentTo) continue;
+    const parent = s.exercises.find((ex) => ex.id === seedEx.equivalentTo);
+    if (parent && Array.isArray(parent.alternates) && !parent.alternates.includes(seedEx.id)) {
+      parent.alternates.push(seedEx.id);
+    }
+  }
+  for (const ex of s.exercises) {
+    if (ex.equivalentTo === undefined) ex.equivalentTo = null;
+    if (ex.loadMultiplier === undefined) ex.loadMultiplier = null;
+  }
+
   for (const ex of s.exercises) {
     if (!s.progress[ex.id]) {
       s.progress[ex.id] = { currentWeight: ex.startWeight, consecutiveFailures: 0 };
