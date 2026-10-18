@@ -4,6 +4,7 @@ import { platesFor, warmupSets } from "../calc.js";
 import { save, update } from "../state.js";
 import { fmtWeight, escapeHtml } from "../util.js";
 import { ACCESSORY_IDS } from "../../data/seed.js";
+import { backupToServer } from "../sync.js";
 import * as timer from "../timer.js";
 
 const DRAFT_KEY = "stronglift.workout.draft";
@@ -367,6 +368,13 @@ export async function render(container, state, params, ctx) {
       save(next);
       clearDraft();
       cleanup();
+      if (next.settings.autoSyncAfterWorkout && next.settings.syncServerUrl) {
+        // Best-effort, silent: no error UI if the T620 isn't reachable right now (e.g.
+        // off home Tailscale) — Settings' "Backup now" is there for a manual retry.
+        backupToServer(next.settings)
+          .then(() => toast("Synced to T620."))
+          .catch(() => {});
+      }
       ctx.navigate("home");
     }
   });

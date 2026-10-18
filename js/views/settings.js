@@ -1,5 +1,7 @@
 // views/settings.js — units/plates/increments/timers/theme, JSON export/import, reset.
 import { update, exportJSON, importJSON, resetAll } from "../state.js";
+import { backupToServer, restoreFromServer } from "../sync.js";
+import { escapeHtml } from "../util.js";
 import * as timer from "../timer.js";
 
 const LB_PER_KG = 2.20462;
@@ -137,6 +139,32 @@ function buildHtml(state) {
     </div>
 
     <div class="card">
+      <div class="card-title">T620 sync</div>
+      <div class="card-sub" style="margin-bottom:10px;">
+        Backs up/restores over your own network (Tailscale). Your phone needs Tailscale
+        connected for this to reach it. See <code>server/README.md</code> in the repo for
+        how to deploy the server.
+      </div>
+      <div class="field">
+        <label>Server URL</label>
+        <input type="text" id="syncServerUrl" placeholder="https://t620.your-tailnet.ts.net:8443" value="${escapeHtml(s.syncServerUrl)}">
+      </div>
+      <div class="field">
+        <label>API key</label>
+        <input type="text" id="syncApiKey" value="${escapeHtml(s.syncApiKey)}">
+      </div>
+      <label class="switch-row">
+        <span>Auto-sync after finishing a workout</span>
+        <input type="checkbox" id="autoSyncAfterWorkout" ${s.autoSyncAfterWorkout ? "checked" : ""}>
+      </label>
+      <div class="btn-row" style="margin-top:10px;">
+        <button type="button" class="btn" id="syncBackupBtn">Backup now</button>
+        <button type="button" class="btn" id="syncRestoreBtn">Restore from T620</button>
+      </div>
+      <div id="syncStatus" class="card-sub" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Your data</div>
       <div class="btn-row">
         <button type="button" class="btn" id="exportBtn">Export JSON</button>
@@ -166,6 +194,51 @@ function wireEvents(container, state, ctx) {
 
   container.querySelector("#defaultSetScheme").addEventListener("change", (e) => {
     state = update((s) => ({ ...s, settings: { ...s.settings, defaultSetScheme: e.target.value } }));
+  });
+
+  container.querySelector("#syncServerUrl").addEventListener("change", (e) => {
+    state = update((s) => ({ ...s, settings: { ...s.settings, syncServerUrl: e.target.value.trim() } }));
+  });
+  container.querySelector("#syncApiKey").addEventListener("change", (e) => {
+    state = update((s) => ({ ...s, settings: { ...s.settings, syncApiKey: e.target.value.trim() } }));
+  });
+  container.querySelector("#autoSyncAfterWorkout").addEventListener("change", (e) => {
+    state = update((s) => ({ ...s, settings: { ...s.settings, autoSyncAfterWorkout: e.target.checked } }));
+  });
+
+  const syncStatus = container.querySelector("#syncStatus");
+  container.querySelector("#syncBackupBtn").addEventListener("click", async (e) => {
+    const btn = e.target;
+    btn.disabled = true;
+    syncStatus.textContent = "Backing up…";
+    try {
+      await backupToServer(state.settings);
+      syncStatus.textContent = "Backed up just now.";
+    } catch (err) {
+      syncStatus.textContent = `Backup failed: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  container.querySelector("#syncRestoreBtn").addEventListener("click", async (e) => {
+    const ok = window.confirm("Replace everything on this device with the T620's backup? This can't be undone.");
+    if (!ok) return;
+    const btn = e.target;
+    btn.disabled = true;
+    syncStatus.textContent = "Restoring…";
+    try {
+      const result = await restoreFromServer(state.settings);
+      if (result.ok) {
+        window.alert("Restore complete.");
+        location.reload();
+      } else {
+        syncStatus.textContent = result.error || "Restore failed.";
+      }
+    } catch (err) {
+      syncStatus.textContent = `Restore failed: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   container.querySelector("#soundOnTimerEnd").addEventListener("change", (e) => {

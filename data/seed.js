@@ -28,6 +28,9 @@ export function defaultSettings() {
     soundOnTimerEnd: false, // off by default — vibration + notification are the primary alert
     notifyOnTimerEnd: false, // off until the user opts in from Settings (requests permission there)
     defaultSetScheme: "5x5", // '5x5' | '3x5' — shown/editable from Home and Workout
+    syncServerUrl: "", // e.g. https://t620.<tailnet>.ts.net:8443 — see server/README.md
+    syncApiKey: "",
+    autoSyncAfterWorkout: true, // best-effort, silent background PUT after Finish (never blocks/errors visibly)
   };
 }
 

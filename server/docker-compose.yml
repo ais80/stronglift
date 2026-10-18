@@ -1,0 +1,21 @@
+# Run from this directory on the T620: docker compose up -d --build
+# Sits alongside the existing stack (riven on 8090, fivextracker-server on 8092) — this
+# uses 8093. Same shape as fivextracker/server/docker-compose.yml, deliberately: same
+# pattern (flat JSON file, shared-secret header, Tailscale-only), separate container/
+# volume/API key so the two apps' backups never collide.
+services:
+  stronglift-server:
+    build: .
+    container_name: stronglift-server
+    restart: unless-stopped
+    ports:
+      - "8093:8093"
+    environment:
+      # Comes from .env (gitignored, not committed) — fails loudly rather than silently
+      # deploying with a weak default if it's missing.
+      BACKUP_API_KEY: ${BACKUP_API_KEY:?Set BACKUP_API_KEY in server/.env before deploying}
+    volumes:
+      - stronglift-data:/data
+
+volumes:
+  stronglift-data:
