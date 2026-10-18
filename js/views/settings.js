@@ -147,7 +147,7 @@ function buildHtml(state) {
       </div>
       <div class="field">
         <label>Server URL</label>
-        <input type="text" id="syncServerUrl" placeholder="https://t620.tail76b543.ts.net:8444" value="${escapeHtml(s.syncServerUrl)}">
+        <input type="text" id="syncServerUrl" placeholder="https://t620.tail76b543.ts.net:9453" value="${escapeHtml(s.syncServerUrl)}">
       </div>
       <div class="field">
         <label>API key</label>

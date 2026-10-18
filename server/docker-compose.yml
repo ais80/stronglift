@@ -1,18 +1,26 @@
 # Run from this directory on the T620: docker compose up -d --build
-# Sits alongside the existing stack. Host port 8096 (checked live against `docker ps` on
-# 2026-10-18: 8090-8094 were all already taken — riven, riven-frontend, fivextracker-server,
-# mediafusion-api, macrotracker-frontend respectively). Container's own default (8093,
-# server.js's PORT fallback) is untouched — only the host-side mapping changed, so nothing
-# else needed updating. Same shape as fivextracker/server/docker-compose.yml, deliberately:
-# same pattern (flat JSON file, shared-secret header, Tailscale-only), separate container/
-# volume/API key so the two apps' backups never collide.
+# Sits alongside the existing stack. Host port 8095 (checked live with `ss -tln` on
+# 2026-10-18, not just `docker ps` — that misses host-networked containers like this
+# host's Jellyfin, which is exactly what was squatting on the first port tried, 8096).
+# 8090-8094 were also already taken: riven, riven-frontend, fivextracker-server,
+# mediafusion-api, macrotracker-frontend respectively. Container's own default (8093,
+# server.js's PORT fallback) is untouched — only the host-side mapping changed, so
+# nothing else needed updating. Same shape as fivextracker/server/docker-compose.yml,
+# deliberately: same pattern (flat JSON file, shared-secret header, Tailscale-only),
+# separate container/volume/API key so the two apps' backups never collide.
+#
+# Explicit project name: this directory is just "server" (like fivextracker's and the
+# unrelated filedrop stack's), and Compose defaults the project name to the directory's
+# basename, which was producing spurious "orphan containers" warnings against those
+# other, unrelated stacks.
+name: stronglift-server
 services:
   stronglift-server:
     build: .
     container_name: stronglift-server
     restart: unless-stopped
     ports:
-      - "8096:8093"
+      - "8095:8093"
     environment:
       # Comes from .env (gitignored, not committed) — fails loudly rather than silently
       # deploying with a weak default if it's missing.
