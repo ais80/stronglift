@@ -1,7 +1,10 @@
 # Run from this directory on the T620: docker compose up -d --build
-# Sits alongside the existing stack (riven on 8090, fivextracker-server on 8092) — this
-# uses 8093. Same shape as fivextracker/server/docker-compose.yml, deliberately: same
-# pattern (flat JSON file, shared-secret header, Tailscale-only), separate container/
+# Sits alongside the existing stack. Host port 8096 (checked live against `docker ps` on
+# 2026-10-18: 8090-8094 were all already taken — riven, riven-frontend, fivextracker-server,
+# mediafusion-api, macrotracker-frontend respectively). Container's own default (8093,
+# server.js's PORT fallback) is untouched — only the host-side mapping changed, so nothing
+# else needed updating. Same shape as fivextracker/server/docker-compose.yml, deliberately:
+# same pattern (flat JSON file, shared-secret header, Tailscale-only), separate container/
 # volume/API key so the two apps' backups never collide.
 services:
   stronglift-server:
@@ -9,7 +12,7 @@ services:
     container_name: stronglift-server
     restart: unless-stopped
     ports:
-      - "8093:8093"
+      - "8096:8093"
     environment:
       # Comes from .env (gitignored, not committed) — fails loudly rather than silently
       # deploying with a weak default if it's missing.
