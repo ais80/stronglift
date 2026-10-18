@@ -43,7 +43,7 @@ funnel`, which would expose it publicly; don't use `funnel` here).
 4. **Expose it over HTTPS via Tailscale** so the PWA (running on HTTPS) can reach it
    without a mixed-content block:
    ```bash
-   tailscale serve --bg 9453 http://localhost:8095
+   tailscale serve --bg --https=9453 http://localhost:8095
    tailscale serve status   # confirm it's mapped
    ```
    This makes it reachable tailnet-wide at `https://t620.tail76b543.ts.net:9453`
@@ -63,6 +63,17 @@ funnel`, which would expose it publicly; don't use `funnel` here).
 
    Then **Backup now** to push, or **Restore from T620** to pull (this replaces
    everything on the current device — it asks for confirmation first).
+
+   **The first time, Chrome will block it and the button will just say "Failed to
+   fetch".** This is Chrome's own **Local Network Access** permission (same category as
+   camera/location — a public page, `ais80.github.io`, reaching a private-network
+   address) — a one-time prompt Chrome shows for the site, not a bug. If no prompt
+   appears automatically, open Chrome's site settings for `ais80.github.io` (tap the
+   padlock/info icon next to the address bar → Permissions, or
+   `chrome://settings/content/all` → search the site) and set **"Local network access"**
+   to Allow, then retry. (Confirmed live during setup: the server's CORS headers alone
+   are necessary but not sufficient — this permission is a separate, additional gate on
+   the browser side that no server-side header can skip.)
 
 ## What it stores
 

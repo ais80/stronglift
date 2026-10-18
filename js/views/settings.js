@@ -144,6 +144,11 @@ function buildHtml(state) {
         Backs up/restores over your own network (Tailscale). Your phone needs Tailscale
         connected for this to reach it. See <code>server/README.md</code> in the repo for
         how to deploy the server.
+        <br><br>
+        <strong>First try will likely fail with "Failed to fetch"</strong> — that's
+        Chrome's own "Local network access" permission (same idea as camera/location),
+        not a bug. Allow it when prompted, or set it manually: tap the icon next to the
+        address bar → Permissions → Local network access → Allow, then try again.
       </div>
       <div class="field">
         <label>Server URL</label>
