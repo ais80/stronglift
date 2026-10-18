@@ -23,7 +23,7 @@
   <div id="summary"></div>
 
   <script type="module">
-    import { roundToStep, isSuccess, nextWeight, applyWorkoutResult, buildWorkout } from "./program.js";
+    import { roundToStep, isSuccess, nextWeight, applyWorkoutResult, buildWorkout, effectiveSets } from "./program.js";
     import { platesFor, warmupSets, estimate1RM } from "./calc.js";
 
     const out = document.getElementById("out");
@@ -115,6 +115,12 @@
       const w = warmupSets(22.5, 20); // barely above the bar -> skip warmups
       assertEq("warmupSets skipped near empty bar", w, []);
     }
+
+    // --- effectiveSets (3x5 / 5x5 scheme) ---
+    assertEq("effectiveSets 5x5 keeps 5", effectiveSets(5, "5x5"), 5);
+    assertEq("effectiveSets 3x5 caps at 3", effectiveSets(5, "3x5"), 3);
+    assertEq("effectiveSets 3x5 never adds to a 1-set lift", effectiveSets(1, "3x5"), 1);
+    assertEq("effectiveSets unknown scheme defaults to original", effectiveSets(5, "bogus"), 5);
 
     // --- e1RM (Epley) ---
     assertEq("estimate1RM 1 rep", estimate1RM(100, 1), 100);

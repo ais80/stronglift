@@ -44,6 +44,8 @@ export async function render(container, state, params, ctx) {
         const progress = { ...s.progress, [ex.id]: { ...(s.progress[ex.id] || { consecutiveFailures: 0 }), currentWeight: w } };
         exercises[idx] = ex;
         return { ...s, exercises, progress };
+      } else if (key === "cue") {
+        ex.cue = value;
       }
 
       exercises[idx] = ex;
@@ -53,6 +55,39 @@ export async function render(container, state, params, ctx) {
   });
 
   listEl.addEventListener("click", (e) => {
+    const altBtn = e.target.closest('[data-action="edit-alternates"]');
+    if (altBtn) {
+      const idx = Number(altBtn.dataset.idx);
+      const ex = state.exercises[idx];
+      const otherNames = state.exercises.filter((e2) => e2.id !== ex.id).map((e2) => e2.name);
+      const current = (ex.alternates || [])
+        .map((id) => state.exercises.find((e2) => e2.id === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+      const answer = window.prompt(
+        `Alternates for ${ex.name} — comma-separated, matched against your lift names.\n` +
+          `Available: ${otherNames.join(", ")}`,
+        current
+      );
+      if (answer === null) return;
+      const wanted = answer
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      state = update((s) => {
+        const exercises = s.exercises.map((e2, i) => {
+          if (i !== idx) return e2;
+          const alternates = s.exercises
+            .filter((cand) => cand.id !== e2.id && wanted.includes(cand.name.toLowerCase()))
+            .map((cand) => cand.id);
+          return { ...e2, alternates };
+        });
+        return { ...s, exercises };
+      });
+      paint();
+      return;
+    }
+
     const delBtn = e.target.closest('[data-action="delete"]');
     if (delBtn) {
       const idx = Number(delBtn.dataset.idx);
@@ -85,6 +120,9 @@ export async function render(container, state, params, ctx) {
         setsReps: { sets: 5, reps: 5 },
         warmupPreset: "bar_main",
         deloadFloor: s.settings.barWeight,
+        alternates: [],
+        cue: "",
+        repUnit: "reps",
       };
       const progress = { ...s.progress, [id]: { currentWeight: exercise.startWeight, consecutiveFailures: 0 } };
       return { ...s, exercises: [...s.exercises, exercise], progress };
@@ -95,6 +133,10 @@ export async function render(container, state, params, ctx) {
 
 function renderCard(ex, idx, state) {
   const progress = state.progress[ex.id] || { currentWeight: ex.startWeight };
+  const altNames = (ex.alternates || [])
+    .map((id) => state.exercises.find((e2) => e2.id === id)?.name)
+    .filter(Boolean)
+    .join(", ");
   return `<div class="card">
     <div class="field">
       <label>Name</label>
@@ -125,6 +167,17 @@ function renderCard(ex, idx, state) {
           <option value="barbell" ${ex.type === "barbell" ? "selected" : ""}>Barbell</option>
           <option value="bodyweight" ${ex.type === "bodyweight" ? "selected" : ""}>Bodyweight</option>
         </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Form cue (shown as "Tips" during a workout)</label>
+      <input type="text" data-field="cue" data-idx="${idx}" value="${escapeHtml(ex.cue || "")}" placeholder="e.g. Brace your core, keep your chest up&hellip;">
+    </div>
+    <div class="field">
+      <label>Alternates (swap-in options when long-pressed during a workout)</label>
+      <div class="card-row">
+        <span class="card-sub">${altNames ? escapeHtml(altNames) : "None set"}</span>
+        <button type="button" class="btn btn-ghost" style="width:auto;" data-action="edit-alternates" data-idx="${idx}">Edit</button>
       </div>
     </div>
     <button type="button" class="btn btn-danger" data-action="delete" data-idx="${idx}">Delete</button>

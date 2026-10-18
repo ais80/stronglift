@@ -369,3 +369,116 @@ a { color: var(--accent); text-decoration: none; }
 @media (min-width: 420px) {
   .sets-grid { grid-template-columns: repeat(5, 1fr); }
 }
+
+/* ===== Set scheme toggle (5x5 / 3x5) ===== */
+.scheme-toggle {
+  display: flex;
+  gap: 6px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  margin-bottom: 16px;
+}
+
+.scheme-btn {
+  flex: 1;
+  min-height: 40px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.scheme-btn.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.scheme-toggle.locked .scheme-btn {
+  opacity: 0.5;
+}
+
+/* ===== Workout: long-press head, swap note, tips ===== */
+.exercise-head[data-swap-head] {
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.swap-note {
+  margin-top: -4px;
+  margin-bottom: 8px;
+  color: var(--accent);
+}
+
+.tips-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  padding: 2px 0 8px;
+  min-height: 0;
+  text-align: left;
+}
+
+.tips-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+/* ===== Accessory block ===== */
+.accessory-card .exercise-block {
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.accessory-remove {
+  margin-top: 6px;
+}
+
+/* ===== Picker overlay (swap / add-accessory) ===== */
+.picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  z-index: 40;
+}
+
+.picker-sheet {
+  width: 100%;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 16px 16px calc(16px + var(--safe-bottom));
+}
+
+.picker-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+}
+
+.picker-section-label {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 12px 0 6px;
+}
+
+.picker-item {
+  margin-bottom: 6px;
+  text-align: left;
+  justify-content: flex-start;
+}

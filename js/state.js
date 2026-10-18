@@ -23,8 +23,9 @@ export function migrate(state) {
 
   if (!s.version) s.version = 1;
 
-  // Example shape for a future bump:
-  // if (s.version === 1) { ...transform...; s.version = 2; }
+  // v1 -> v2: added alternates/cue/repUnit per exercise, plus 14 alternate and 5
+  // accessory exercises, plus settings.defaultSetScheme. Existing users' own
+  // exercises/progress/history are preserved as-is; only missing pieces are added.
 
   // Fill in any keys a partial/older payload might be missing, without clobbering data.
   const seed = seedState();
@@ -32,6 +33,25 @@ export function migrate(state) {
   s.exercises = Array.isArray(s.exercises) && s.exercises.length ? s.exercises : seed.exercises;
   s.programDays = s.programDays || seed.programDays;
   s.progress = s.progress || {};
+
+  // Backfill new per-exercise fields on whatever exercises the user already has.
+  for (const ex of s.exercises) {
+    if (ex.alternates === undefined) ex.alternates = [];
+    if (ex.cue === undefined) ex.cue = "";
+    if (ex.repUnit === undefined) ex.repUnit = "reps";
+    if (ex.deloadFloor === undefined) ex.deloadFloor = ex.startWeight;
+  }
+
+  // Add any newly-seeded exercises (alternates/accessories) the user doesn't have yet,
+  // identified by id, without touching exercises/progress the user already has.
+  const existingIds = new Set(s.exercises.map((ex) => ex.id));
+  for (const ex of seed.exercises) {
+    if (!existingIds.has(ex.id)) {
+      s.exercises.push(ex);
+      existingIds.add(ex.id);
+    }
+  }
+
   for (const ex of s.exercises) {
     if (!s.progress[ex.id]) {
       s.progress[ex.id] = { currentWeight: ex.startWeight, consecutiveFailures: 0 };

@@ -11,6 +11,17 @@ no account, no server — your data lives in your browser (`localStorage`).
 
 - **5×5 program**: alternating Day A (Squat, Bench Press, Barbell Row) / Day B (Squat,
   Overhead Press, Deadlift), all editable.
+- **3×5 / 5×5 toggle**: short on time? Switch to 3 sets for Squat/Bench/Row/Press from
+  Home or Workout (Deadlift stays 1×5 either way). Locks once a set's logged that session.
+- **Swap a lift mid-workout**: long-press any main lift during a workout to substitute
+  an alternative (rack/bench busy?) — curated suggestions per lift plus your full list.
+  The substitute gets its own independent weight/history; your original lift's
+  progression just sits out that session, untouched.
+- **Optional accessory work**: an "if you have time" block at the end of a workout —
+  quick-add Plank, Face Pulls, Bicep Curls, Tricep Pushdown, Hanging Leg Raise (or
+  anything else), fully tracked just like a main lift.
+- **Form cues**: a collapsed-by-default "Tips" note on every lift with a one-line
+  setup/execution cue.
 - **Auto progression**: +2.5 kg (upper body) / +5 kg (deadlift) per successful session;
   3 consecutive misses triggers a 10% deload, floored so it never drops below a sane
   working weight.
@@ -24,7 +35,7 @@ no account, no server — your data lives in your browser (`localStorage`).
 - **History**: every session logged, with delete (confirmed) and detail view.
 - **Progress**: a weight-over-time chart per lift plus an Epley-estimated 1RM line and
   your best set.
-- **Exercises**: edit weight/increment/sets×reps per lift, or add your own.
+- **Exercises**: edit weight/increment/sets×reps/cue/alternates per lift, or add your own.
 - **Settings**: kg ⇄ lb (converts everything), bar weight, plate inventory, deload
   rules, rest durations, theme (dark/light/auto), and full JSON export/import.
 - **Installable PWA**: add to your phone's home screen, launches full-screen, works

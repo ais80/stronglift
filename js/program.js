@@ -16,6 +16,16 @@ export function roundToStep(weight, step, mode = "nearest") {
   return round2(rounded * step);
 }
 
+/**
+ * How many sets a "main slot" lift should do today, given the session's set scheme.
+ * '3x5' caps at 3 sets to save time; it never *adds* sets (e.g. Deadlift's 1 stays 1),
+ * and never applies to accessory add-ons — callers only use this for main-slot entries.
+ */
+export function effectiveSets(originalSets, scheme) {
+  if (scheme === "3x5") return Math.min(originalSets, 3);
+  return originalSets;
+}
+
 export function round2(n) {
   return Math.round(n * 100) / 100;
 }

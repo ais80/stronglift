@@ -80,6 +80,20 @@ function buildHtml(state) {
     </div>
 
     <div class="card">
+      <div class="card-title">Default set scheme</div>
+      <div class="card-sub" style="margin-bottom:10px;">
+        3&times;5 shortens Squat/Bench/Row/Press to 3 sets to save time &mdash; Deadlift and
+        accessories are unaffected. Overridable per session from Home or Workout.
+      </div>
+      <div class="field">
+        <select id="defaultSetScheme">
+          <option value="5x5" ${s.defaultSetScheme === "5x5" ? "selected" : ""}>5&times;5</option>
+          <option value="3x5" ${s.defaultSetScheme === "3x5" ? "selected" : ""}>3&times;5 (faster)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Plates on hand</div>
       <div class="card-sub" style="margin-bottom:10px;">Count is both sides combined.</div>
       <div id="platesList">${platesRows}</div>
@@ -149,6 +163,10 @@ function wireEvents(container, state, ctx) {
   bindNumber(container, "#deloadPct", (v) => update((s) => ({ ...s, settings: { ...s.settings, deloadPct: v } })));
   bindNumber(container, "#restSecsMain", (v) => update((s) => ({ ...s, settings: { ...s.settings, restSecsMain: Math.max(0, Math.round(v)) } })));
   bindNumber(container, "#restSecsLast", (v) => update((s) => ({ ...s, settings: { ...s.settings, restSecsLast: Math.max(0, Math.round(v)) } })));
+
+  container.querySelector("#defaultSetScheme").addEventListener("change", (e) => {
+    state = update((s) => ({ ...s, settings: { ...s.settings, defaultSetScheme: e.target.value } }));
+  });
 
   container.querySelector("#soundOnTimerEnd").addEventListener("change", (e) => {
     state = update((s) => ({ ...s, settings: { ...s.settings, soundOnTimerEnd: e.target.checked } }));

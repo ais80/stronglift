@@ -175,3 +175,63 @@ Pure functions, unit-testable, no DOM:
 ## 10. Out of scope for v1 (note, don't build)
 Cloud sync, accounts, multiple programs (5/3/1 etc.), Apple Watch, social — list in README
 as possible phase 2.
+
+## 11. Phase 2 — set scheme, alternates, accessories, cues
+
+Agreed with the user (see conversation); no engine changes needed — `isSuccess`/
+`nextWeight`/`applyWorkoutResult` already work on whatever sets/exercise-id a session
+logs, so this is schema + UI.
+
+### Data model additions
+- `settings.defaultSetScheme: '5x5' | '3x5'` (default `'5x5'`).
+- Per exercise: `alternates: [exerciseId, ...]`, `cue: string` (one-line setup/execution
+  tip), `repUnit: 'reps' | 'seconds'` (default `'reps'`; Plank uses `'seconds'` so its
+  target displays as "45 sec" not "45 reps" — same engine, just a label).
+- New seeded exercises (all fully tracked like any other lift; `type: 'bodyweight'` so
+  they skip the barbell plate calculator/warmup ramp — machines, dumbbells, cables, and
+  bodyweight moves don't use barbell plates):
+  - Alternates (14): Leg Press, Goblet Squat, Hack Squat / DB Bench Press, Push-ups,
+    Machine Chest Press / Cable Row, DB Row, Chest-Supported Row / DB Shoulder Press,
+    Machine Shoulder Press / Trap Bar Deadlift, Romanian Deadlift, Rack Pull.
+  - Accessories (5): Plank (`repUnit: 'seconds'`), Face Pulls, Bicep Curls, Tricep
+    Pushdown, Hanging Leg Raise.
+  - `deloadFloor` defaults to each one's own `startWeight` (conservative: light/machine
+    work won't auto-deload below where it started).
+- Main lifts (`squat`, `bench`, `row`, `press`, `deadlift`) get their `alternates` list
+  populated per the mapping above.
+
+### Set scheme (3×5 / 5×5)
+- Toggle shown on **Home** and **Workout** (both edit the same `settings.
+  defaultSetScheme`). On Workout it **locks once any set in that session is logged**.
+- Effective sets for a "main slot" entry (squat/bench/row/press, or whatever's
+  currently swapped into that slot) = `scheme === '3x5' ? min(originalSets, 3) :
+  originalSets`. Deadlift (1 set) and any accessory add-on are unaffected regardless
+  of scheme.
+- Draft entries get an `isMainSlot: boolean` (set at `buildDraft`, preserved through a
+  swap) so the scheme reduction applies to whichever exercise currently fills that
+  slot, and never to accessory add-ons.
+
+### Alternates (long-press swap)
+- Long-press (~500ms hold, short `navigator.vibrate` on trigger; cancels on
+  pointerup/move) on a lift **in the Workout screen only** opens a picker: that lift's
+  curated `alternates` + "choose another lift" (full exercise list fallback).
+- Swapping replaces that draft entry's exercise (id/name/type/weight/setsReps/
+  increment/warmupPreset/cue) for **this session only** — `programDays` is untouched,
+  and the original lift's `progress` entry is simply not updated this session. The
+  alternate's own `progress`/history is used and updated normally through the existing
+  engine (no special-casing).
+- Locks once a set's logged for that slot (no re-swap mid-stream, same rule as below).
+
+### Accessory block
+- Collapsible "Optional — if you have time" section after the main lifts, before
+  Finish: quick-add chips for the 5 curated accessories + a "+ more…" fallback (same
+  picker component as alternates, in "add" mode instead of "swap" mode).
+- Tapping a chip appends a normal, fully-interactive exercise block to the draft
+  (`isMainSlot: false`) — identical set-cell UI/logging to a main lift. Removable via a
+  small "×" **only while no set in it has been logged yet**; once logged, it's locked
+  in and finishes/progresses like any other lift.
+- Not pre-assigned to `programDays.A`/`B` — adding one only affects today's session.
+
+### Form cues
+- Every exercise (main + alternates + accessories) carries a one-line `cue`. Shown via
+  a collapsed-by-default "ⓘ Tips" toggle under the exercise name in Workout.
