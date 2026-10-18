@@ -27,10 +27,20 @@ if (!API_KEY) {
 
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
-function setCors(res) {
+function setCors(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, PUT, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Api-Key");
+  // Chrome's Private Network Access policy: a page served from a public address
+  // (ais80.github.io) fetching a private-network one (this server, on a Tailscale
+  // 100.x address) requires this explicit opt-in, checked on the preflight — without
+  // it the browser blocks the request before it's even sent, with a generic
+  // net::ERR_FAILED and no indication CORS/PNA was the cause. Direct navigation isn't
+  // subject to this, only fetch()/XHR, which is why a plain `curl`/browser-address-bar
+  // test can look fine while the app's fetch() calls fail.
+  if (req.headers["access-control-request-private-network"] === "true") {
+    res.setHeader("Access-Control-Allow-Private-Network", "true");
+  }
 }
 
 function authed(req) {
@@ -56,7 +66,7 @@ function readBody(req) {
 }
 
 const server = http.createServer(async (req, res) => {
-  setCors(res);
+  setCors(req, res);
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
