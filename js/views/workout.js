@@ -1,21 +1,26 @@
 // views/workout.js — the live workout screen: the core loop of the app.
-import { buildWorkout, applyWorkoutResult, effectiveSets, equivalentStartWeight } from "../program.js";
+import { buildWorkout, applyWorkoutResult, effectiveSets, equivalentStartWeight, pendingItems, applyLoggedItems } from "../program.js";
 import { platesFor, warmupSets } from "../calc.js";
 import { save, update } from "../state.js";
 import { fmtWeight, escapeHtml } from "../util.js";
 import { ACCESSORY_IDS } from "../../data/seed.js";
 import { backupToServer } from "../sync.js";
 import * as timer from "../timer.js";
+import * as restNotify from "../restNotify.js";
 
 const DRAFT_KEY = "stronglift.workout.draft";
 const LONG_PRESS_MS = 500;
+// The draft lives in localStorage so a workout survives Android closing the app while
+// the phone is locked. Drafts older than this are treated as abandoned.
+const DRAFT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 function loadDraft(day, state) {
   try {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
+    const raw = localStorage.getItem(DRAFT_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.day === day && Array.isArray(parsed.entries)) return parsed;
+      const fresh = parsed && Date.now() - parsed.startedAt < DRAFT_MAX_AGE_MS;
+      if (fresh && parsed.day === day && Array.isArray(parsed.entries)) return parsed;
     }
   } catch (e) {
     console.warn("[workout] could not read draft, starting fresh:", e);
@@ -39,6 +44,13 @@ function makeEntry(exercise, state, { isMainSlot, swappedFrom }) {
   };
   const scheme = state.settings.defaultSetScheme;
   const sets = isMainSlot ? effectiveSets(exercise.setsReps.sets, scheme) : exercise.setsReps.sets;
+  const warmups =
+    exercise.type === "bodyweight"
+      ? []
+      : warmupSets(progress.currentWeight, state.settings.barWeight, exercise.increment).map((w) => ({
+          ...w,
+          done: false,
+        }));
   return {
     exerciseId: exercise.id,
     name: exercise.name,
@@ -47,6 +59,7 @@ function makeEntry(exercise, state, { isMainSlot, swappedFrom }) {
     targetWeight: progress.currentWeight,
     increment: exercise.increment,
     warmupOn: true,
+    warmups, // [{ weight, reps, done }] — logged for the record, never affect progression
     cue: exercise.cue || "",
     repUnit: exercise.repUnit || "reps",
     alternates: exercise.alternates || [],
@@ -71,7 +84,7 @@ function buildDraft(day, state) {
 
 function persistDraft(draft) {
   try {
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   } catch (e) {
     /* non-fatal: worst case a reload loses in-progress logging for this set */
   }
@@ -79,7 +92,7 @@ function persistDraft(draft) {
 
 function clearDraft() {
   try {
-    sessionStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(DRAFT_KEY);
   } catch (e) {
     /* ignore */
   }
@@ -88,6 +101,7 @@ function clearDraft() {
 export async function render(container, state, params, ctx) {
   const day = params[0] === "A" || params[0] === "B" ? params[0] : state.nextDay;
   const draft = loadDraft(day, state);
+  persistDraft(draft); // fixes its session id, which sets logged from the notification refer to
   const openTips = new Set(); // which exercise blocks have their cue expanded (ephemeral)
 
   container.innerHTML = `
@@ -114,30 +128,121 @@ export async function render(container, state, params, ctx) {
   `;
   document.body.appendChild(timerBarEl);
 
-  function startRestTimer(seconds) {
+  // ---- lock-screen notification (see restNotify.js / service-worker.js) ----
+  function platesLabel(weight) {
+    const plates = platesFor(weight, state.settings.barWeight, state.settings.plates);
+    const text = plates.perSide.length
+      ? plates.perSide.map((p) => `${trim(p.weight)}×${p.count}`).join(" + ") + " /side"
+      : "bar only";
+    return plates.exact ? text : `${text} (closest: ${fmtWeight(plates.achievedWeight, state.settings.units)})`;
+  }
+
+  /** Remaining sets in order, with the text the notification shows for each. */
+  function buildQueue() {
+    const units = state.settings.units;
+    return pendingItems(draft.entries).map((it) => {
+      const entry = draft.entries[it.exIdx];
+      const base = { exIdx: it.exIdx, kind: it.kind, idx: it.idx, exerciseId: entry.exerciseId };
+      if (it.kind === "warmup") {
+        const w = entry.warmups[it.idx];
+        return {
+          ...base,
+          reps: w.reps,
+          restAfter: 0,
+          actionTitle: "✓ Done",
+          label: `${entry.name} · warm-up ${it.idx + 1}/${entry.warmups.length} · ${fmtWeight(w.weight, units)} × ${w.reps} · ${platesLabel(w.weight)}`,
+        };
+      }
+      const target = entry.setsReps.reps;
+      const unitWord = entry.repUnit === "seconds" ? "sec" : "reps";
+      const load =
+        entry.targetWeight > 0 ? `${fmtWeight(entry.targetWeight, units)} × ${target}` : `${target} ${unitWord}`;
+      const plates = entry.type !== "bodyweight" ? ` · ${platesLabel(entry.targetWeight)}` : "";
+      return {
+        ...base,
+        reps: target,
+        restAfter: state.settings.restSecsMain, // the button logs a full (hit) set
+        actionTitle: `✓ Done — ${target} ${unitWord}`,
+        label: `${entry.name} · set ${it.idx + 1}/${entry.sets.length} · ${load}${plates}`,
+      };
+    });
+  }
+
+  function notifyInfo() {
+    return {
+      sessionId: draft.startedAt,
+      endAt: timer.isRunning() ? timer.storedEndAt() : 0,
+      queue: buildQueue(),
+    };
+  }
+
+  /** Refresh the notification; `schedule` also has the service worker fire rest-over. */
+  function syncNotification(schedule = false) {
+    if (!restNotify.canNotify(state.settings)) return;
+    restNotify.post("rest-show", { ...notifyInfo(), schedule });
+  }
+
+  function startRestTimer(seconds, { startedAt = Date.now(), notify = true } = {}) {
+    const endAt = startedAt + seconds * 1000;
     timerBarEl.hidden = false;
-    timer.setNotificationsEnabled(!!state.settings.notifyOnTimerEnd);
     timer.setBeepEnabled(!!state.settings.soundOnTimerEnd);
-    timer.start(seconds, {
+    timer.startUntil(endAt, {
       onTick: (remaining) => {
         const el = timerBarEl.querySelector("#timerCount");
         if (el) el.textContent = timer.formatMMSS(remaining);
       },
       onDone: () => {
         timerBarEl.hidden = true;
+        // Backup for the service worker's own alert; it ignores this if it already fired.
+        if (restNotify.canNotify(state.settings)) {
+          restNotify.post("rest-over", { ...notifyInfo(), endAt });
+        }
       },
     });
+    if (notify) syncNotification(true);
   }
 
   timerBarEl.querySelector("#skipRestBtn").addEventListener("click", () => {
     timer.stop();
     timerBarEl.hidden = true;
+    syncNotification();
   });
+
+  /** Apply sets logged from the notification while this page wasn't looking. */
+  async function applyPending() {
+    const actions = await restNotify.takePending();
+    if (!actions.length) return;
+    const applied = applyLoggedItems(draft, actions);
+    if (!applied.length) return;
+    persistDraft(draft);
+    // The rest running now is the one started by the last logged set (the service
+    // worker already put it on the notification). Restart the timer before repainting,
+    // since the repaint refreshes the notification from the timer's state.
+    const last = applied[applied.length - 1];
+    const endAt = last.restAfter > 0 ? last.at + last.restAfter * 1000 : 0;
+    if (endAt > Date.now()) {
+      startRestTimer(last.restAfter, { startedAt: last.at, notify: false });
+    } else {
+      timer.stop();
+      timerBarEl.hidden = true;
+    }
+    paintBody();
+    toast(`Logged ${applied.length} set${applied.length > 1 ? "s" : ""} from the notification.`);
+  }
+
+  const stopPendingListener = restNotify.onPending(applyPending);
+  const onVisible = () => {
+    if (document.visibilityState === "visible") applyPending();
+  };
+  document.addEventListener("visibilitychange", onVisible);
 
   function cleanup() {
     timer.stop();
     timerBarEl.remove();
     closePicker();
+    stopPendingListener();
+    document.removeEventListener("visibilitychange", onVisible);
+    restNotify.post("rest-clear");
     window.removeEventListener("hashchange", cleanup);
   }
   window.addEventListener("hashchange", cleanup);
@@ -310,8 +415,16 @@ export async function render(container, state, params, ctx) {
 
   function paintBody() {
     bodyEl.innerHTML = buildBodyHtml(draft, state, openTips);
+    syncNotification();
   }
   paintBody();
+
+  // Resume a rest that was running when the app was closed, then pick up anything
+  // logged from the notification in the meantime.
+  if (timer.storedEndAt() > Date.now()) {
+    startRestTimer((timer.storedEndAt() - Date.now()) / 1000);
+  }
+  applyPending();
 
   function onSetLogged(entry, set) {
     const hit = set.reps >= entry.setsReps.reps;
@@ -354,6 +467,15 @@ export async function render(container, state, params, ctx) {
       return;
     }
 
+    const warmupBtn = e.target.closest('[data-action="warmup-cell"]');
+    if (warmupBtn) {
+      const w = draft.entries[Number(warmupBtn.dataset.ex)].warmups[Number(warmupBtn.dataset.w)];
+      w.done = !w.done;
+      persistDraft(draft);
+      paintBody();
+      return;
+    }
+
     const tipsBtn = e.target.closest('[data-action="toggle-tips"]');
     if (tipsBtn) {
       const exIdx = Number(tipsBtn.dataset.ex);
@@ -387,11 +509,13 @@ export async function render(container, state, params, ctx) {
         exerciseId: entry.exerciseId,
         targetWeight: entry.targetWeight,
         sets: entry.sets.map((s) => ({ reps: s.reps ?? 0, target: entry.setsReps.reps })),
+        warmups: (entry.warmups || []).filter((w) => w.done).map(({ weight, reps }) => ({ weight, reps })),
       }));
       const durationSecs = Math.round((Date.now() - draft.startedAt) / 1000);
       const next = applyWorkoutResult(state, day, entries, durationSecs);
       save(next);
       clearDraft();
+      restNotify.clearPending();
       cleanup();
       if (next.settings.autoSyncAfterWorkout && next.settings.syncServerUrl) {
         // Best-effort, silent: no error UI if the T620 isn't reachable right now (e.g.
@@ -507,13 +631,17 @@ function buildExerciseBlockHtml(entry, exIdx, state, openTips) {
       ? ""
       : ` &middot; closest achievable: ${fmtWeight(plates.achievedWeight, state.settings.units)}`;
 
-    const warmups = entry.warmupOn
-      ? warmupSets(entry.targetWeight, state.settings.barWeight, entry.increment)
-      : [];
+    const warmups = entry.warmupOn ? entry.warmups || [] : [];
     warmupHtml = warmups.length
-      ? `<div class="plates-row">Warm-up: ${warmups
-          .map((w) => `${fmtWeight(w.weight, state.settings.units)}×${w.reps}`)
-          .join(", ")}</div>`
+      ? `<div class="warmup-list">${warmups
+          .map(
+            (w, wIdx) => `<button type="button" class="warmup-cell ${w.done ? "done" : ""}" data-action="warmup-cell" data-ex="${exIdx}" data-w="${wIdx}">
+              <span class="warmup-load">${fmtWeight(w.weight, state.settings.units)} &times; ${w.reps}</span>
+              <span class="warmup-plates">${escapeHtml(warmupPlates(w.weight, state))}</span>
+              <span class="warmup-check">${w.done ? "✓" : ""}</span>
+            </button>`
+          )
+          .join("")}</div>`
       : "";
   }
 
@@ -576,6 +704,13 @@ function buildExerciseBlockHtml(entry, exIdx, state, openTips) {
     <div class="sets-grid">${setsHtml}</div>
     ${removeBtn}
   </div>`;
+}
+
+function warmupPlates(weight, state) {
+  const plates = platesFor(weight, state.settings.barWeight, state.settings.plates);
+  return plates.perSide.length
+    ? plates.perSide.map((p) => `${trim(p.weight)}×${p.count}`).join(" + ") + " /side"
+    : "Bar only";
 }
 
 function trim(n) {

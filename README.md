@@ -38,12 +38,21 @@ your own server (see **T620 sync** below).
   3 consecutive misses triggers a 10% deload, floored so it never drops below a sane
   working weight.
 - **Plate calculator**: per-side plate breakdown from the plates you actually own.
-- **Warm-up sets**: an automatic percentage-based ramp before your work sets.
-- **Rest timer**: counts down after each set, survives the tab being backgrounded.
-  **Media-safe** — the alert is vibration + a silent notification, never audio, so it
-  never pauses Spotify/YouTube.
-- **Watch support (no separate app)**: enable notifications in Settings and, on a
-  Galaxy S24+ with a paired Galaxy Watch 4, the rest-timer alert mirrors to the watch.
+- **Warm-up sets**: an automatic percentage-based ramp before your work sets. Each
+  warm-up shows its plates per side and can be ticked off. Ticked warm-ups are saved to
+  History but never affect progression.
+- **Rest timer**: counts down after each set, and survives the app being backgrounded
+  or closed.
+- **Lock-screen workout notification**: shows the next set (warm-up or work set, with
+  plates), "Resting · next set at 14:35" during rest, and a **✓ Done** button that logs
+  the set without unlocking. The rest-over alert comes from the service worker, so it
+  still fires while the app is asleep (for rests up to ~4¾ min). A missed set is
+  corrected in the app.
+- **Media-safe**: alerts are vibration and notifications only, never audio, so YT
+  Music/Spotify keep playing. Set StrongLift's notification sound to Silent on the phone
+  so Android doesn't dip the music either (see `TESTING.md` §2).
+- **Watch support (no separate app)**: the rest-over notification mirrors to a paired
+  Galaxy Watch and buzzes it.
 - **History**: every session logged, with delete (confirmed) and detail view.
 - **Progress**: a weight-over-time chart per lift plus an Epley-estimated 1RM line and
   your best set.
@@ -88,10 +97,10 @@ timer, install/offline, Smith machine swaps, T620 sync).
 
 ### Galaxy Watch 4
 
-There's no separate watch app. In Settings, turn on **"Notify when rest ends"** — on
-Android this mirrors to a paired Wear OS watch, so the watch buzzes when your rest
-timer ends. It's vibration-only by design, so it never interrupts music or video
-playing on your phone or watch.
+There's no separate watch app. In Settings, turn on **"Lock-screen workout
+notification"**. On Android the rest-over alert mirrors to a paired Wear OS watch, so
+the watch buzzes when your rest ends. For the Samsung settings that keep it working
+with the phone locked (silent sound, never-sleeping app), see `TESTING.md` §2.
 
 ## Deploy to GitHub Pages
 
@@ -125,6 +134,8 @@ See `BUILD_PLAN.md` for the full spec. Short version:
 
 - A real standalone Wear OS tile/app (today's watch support is notification-mirroring
   only).
+- Writing workouts to Samsung Health / Health Connect (a web app can't; it needs a
+  native Android wrapper).
 - Live multi-device sync / accounts (today's T620 sync is a single-device backup and
   restore, not a two-way merge).
 - Alternate programs (5/3/1, Madcow, etc.) alongside 5×5.

@@ -117,14 +117,16 @@ function buildHtml(state) {
         <div class="field"><label>After a miss (sec)</label><input type="number" min="0" id="restSecsLast" value="${s.restSecsLast}"></div>
       </div>
       <label class="switch-row">
-        <span>Beep when rest ends</span>
+        <span>Beep when rest ends <span class="card-sub">(can dip music — leave off)</span></span>
         <input type="checkbox" id="soundOnTimerEnd" ${s.soundOnTimerEnd ? "checked" : ""}>
       </label>
       <label class="switch-row">
-        <span>Notify when rest ends (mirrors to watch)</span>
+        <span>Lock-screen workout notification (next set, rest timer, &check; Done button; buzzes the watch)</span>
         <input type="checkbox" id="notifyOnTimerEnd" ${s.notifyOnTimerEnd ? "checked" : ""}>
       </label>
-      <div class="card-sub">Both alerts vibrate only — they never pause music or video.</div>
+      <div class="card-sub">Alerts only vibrate and never pause YT Music. To stop Android dipping the
+        music at rest-over, set StrongLift's notification sound to Silent and leave vibration on
+        (phone Settings &rarr; Notifications &rarr; App notifications &rarr; StrongLift).</div>
     </div>
 
     <div class="card">
@@ -255,14 +257,12 @@ function wireEvents(container, state, ctx) {
     const checkbox = e.target;
     if (!checkbox.checked) {
       state = update((s) => ({ ...s, settings: { ...s.settings, notifyOnTimerEnd: false } }));
-      timer.setNotificationsEnabled(false);
       return;
     }
     // Lazy permission request — only ever from this explicit user gesture, never on load.
     const result = await timer.requestNotificationPermission();
     if (result === "granted") {
       state = update((s) => ({ ...s, settings: { ...s.settings, notifyOnTimerEnd: true } }));
-      timer.setNotificationsEnabled(true);
     } else {
       checkbox.checked = false;
       window.alert(

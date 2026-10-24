@@ -166,6 +166,7 @@ export function applyWorkoutResult(state, day, entries, durationSecs) {
       exerciseId: entry.exerciseId,
       targetWeight: entry.targetWeight,
       sets: entry.sets,
+      warmups: entry.warmups || [], // logged warm-ups: a record only, never affect progression
       success,
       deloaded: result.deloaded,
       nextWeight: result.currentWeight,
@@ -187,4 +188,52 @@ export function applyWorkoutResult(state, day, entries, durationSecs) {
     history: [historyRecord, ...state.history],
     nextDay: day === "A" ? "B" : "A",
   };
+}
+
+/**
+ * Everything still to do in a workout draft, in order: for each exercise, its warm-ups
+ * (only while warm-ups are shown and no work set has been logged yet), then its work
+ * sets. Used for the lock-screen "next set" notification.
+ * @returns {{ exIdx: number, kind: 'warmup'|'work', idx: number }[]}
+ */
+export function pendingItems(entries) {
+  const out = [];
+  entries.forEach((entry, exIdx) => {
+    const workStarted = entry.sets.some((s) => s.reps !== null);
+    if (entry.warmupOn && !workStarted) {
+      (entry.warmups || []).forEach((w, idx) => {
+        if (!w.done) out.push({ exIdx, kind: "warmup", idx });
+      });
+    }
+    entry.sets.forEach((s, idx) => {
+      if (s.reps === null) out.push({ exIdx, kind: "work", idx });
+    });
+  });
+  return out;
+}
+
+/**
+ * Apply sets logged from a notification (while the page may have been asleep) to a
+ * draft. Mutates `draft`. Skips anything from another session, for a swapped-out
+ * exercise, or already logged, so applying the same action twice is harmless.
+ * @returns the actions that were actually applied
+ */
+export function applyLoggedItems(draft, actions) {
+  const applied = [];
+  for (const a of actions) {
+    if (a.sessionId !== draft.startedAt) continue;
+    const entry = draft.entries[a.exIdx];
+    if (!entry || entry.exerciseId !== a.exerciseId) continue;
+    if (a.kind === "warmup") {
+      const w = (entry.warmups || [])[a.idx];
+      if (!w || w.done) continue;
+      w.done = true;
+    } else {
+      const set = entry.sets[a.idx];
+      if (!set || set.reps !== null) continue;
+      set.reps = a.reps;
+    }
+    applied.push(a);
+  }
+  return applied;
 }

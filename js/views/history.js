@@ -69,6 +69,13 @@ function renderDetail(container, state, sessionId, ctx) {
           <span class="${resultClass}">${resultIcon} ${escapeHtml(name)}</span>
           <span class="card-sub">${fmtWeight(entry.targetWeight, state.settings.units)}</span>
         </div>
+        ${
+          entry.warmups && entry.warmups.length
+            ? `<div class="card-sub">Warm-ups: ${entry.warmups
+                .map((w) => `${fmtWeight(w.weight, state.settings.units)}×${w.reps}`)
+                .join(", ")}</div>`
+            : ""
+        }
         <div class="card-sub">Sets (reps/target): ${setsText}</div>
         ${deloadNote}
         ${linkedNote}

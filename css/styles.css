@@ -258,6 +258,40 @@ a { color: var(--accent); text-decoration: none; }
   opacity: 0.8;
 }
 
+/* ===== Warm-up rows (tap each when done) ===== */
+.warmup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.warmup-cell {
+  display: grid;
+  grid-template-columns: auto 1fr 20px;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap-min);
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.warmup-cell .warmup-load { font-weight: 600; }
+.warmup-cell .warmup-plates { color: var(--text-muted); font-size: 0.85rem; }
+.warmup-cell .warmup-check { font-weight: 700; text-align: right; }
+
+.warmup-cell.done {
+  border-color: var(--success);
+  color: var(--text-muted);
+}
+.warmup-cell.done .warmup-check { color: var(--success); }
+
 /* ===== Rest timer bar ===== */
 .timer-bar {
   position: fixed;

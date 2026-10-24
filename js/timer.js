@@ -1,16 +1,16 @@
-// timer.js — rest timer. MEDIA-SAFE BY DESIGN (see BUILD_PLAN.md §5/§5a):
-// the end-of-rest alert is vibration + an optional silent Notification. It never uses
+// timer.js — rest timer. MEDIA-SAFE BY DESIGN (see BUILD_PLAN.md §5/§5a): it never uses
 // the Media Session API or an <audio>/<video> element, because either of those requests
-// audio focus from Android and would pause/duck Spotify, YouTube, etc. The only sound
-// option (`setBeepEnabled`, default OFF) is a short WebAudio tone, which Android treats
-// as a transient UI sound rather than a media stream.
+// audio focus from Android and would pause/duck YT Music, Spotify, etc. In-app the alert
+// is vibration. Lock-screen/watch notifications live in the service worker (see
+// restNotify.js). The only sound option (`setBeepEnabled`, default OFF) is a short
+// WebAudio tone.
 
+// localStorage (not sessionStorage) so a running rest survives Android killing the app.
 const SESSION_KEY = "stronglift.timer.endAt";
 
 let intervalId = null;
 let onTickCb = null;
 let onDoneCb = null;
-let notifyEnabled = false;
 let beepEnabled = false;
 let audioCtx = null;
 
@@ -18,23 +18,26 @@ export function isRunning() {
   return intervalId !== null;
 }
 
-export function remainingSeconds() {
-  let endAt = 0;
+/** When the current rest ends (ms since epoch), or 0 if none is stored. */
+export function storedEndAt() {
   try {
-    endAt = Number(sessionStorage.getItem(SESSION_KEY) || 0);
+    return Number(localStorage.getItem(SESSION_KEY) || 0);
   } catch (e) {
-    /* sessionStorage unavailable — timer just won't survive a reload */
+    return 0; // storage unavailable — timer just won't survive a reload
   }
+}
+
+export function remainingSeconds() {
+  const endAt = storedEndAt();
   if (!endAt) return 0;
   return Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
 }
 
-/** Start (or restart) the rest countdown. */
-export function start(seconds, { onTick, onDone } = {}) {
+/** Start (or restart) the rest countdown so it ends at `endAt` (ms since epoch). */
+export function startUntil(endAt, { onTick, onDone } = {}) {
   stop();
-  const endAt = Date.now() + seconds * 1000;
   try {
-    sessionStorage.setItem(SESSION_KEY, String(endAt));
+    localStorage.setItem(SESSION_KEY, String(endAt));
   } catch (e) {
     /* ignore */
   }
@@ -44,11 +47,15 @@ export function start(seconds, { onTick, onDone } = {}) {
   intervalId = setInterval(tick, 500);
 }
 
+export function start(seconds, callbacks) {
+  startUntil(Date.now() + seconds * 1000, callbacks);
+}
+
 export function stop() {
   if (intervalId) clearInterval(intervalId);
   intervalId = null;
   try {
-    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
   } catch (e) {
     /* ignore */
   }
@@ -75,10 +82,6 @@ window.addEventListener("focus", () => {
   if (isRunning()) tick();
 });
 
-export function setNotificationsEnabled(enabled) {
-  notifyEnabled = !!enabled;
-}
-
 export function setBeepEnabled(enabled) {
   beepEnabled = !!enabled;
 }
@@ -96,8 +99,10 @@ export async function requestNotificationPermission() {
 }
 
 function fireAlert() {
-  // 1) Vibration — primary alert. Never touches audio, so it can't interfere with media.
-  if ("vibrate" in navigator) {
+  // Vibration — never touches audio, so it can't interfere with music. Chrome only
+  // allows it while the app is on screen; the service worker's notification covers the
+  // locked-phone case and buzzes the watch.
+  if (document.visibilityState === "visible" && "vibrate" in navigator) {
     try {
       navigator.vibrate([200, 100, 200]);
     } catch (e) {
@@ -105,25 +110,8 @@ function fireAlert() {
     }
   }
 
-  // 2) Notification — fires even while backgrounded; on the S24+ this mirrors to a paired
-  //    Galaxy Watch 4 and buzzes it. Silent + low priority so it never plays a sound.
-  if (notifyEnabled && "Notification" in window && Notification.permission === "granted") {
-    const payload = { body: "Time for your next set.", tag: "stronglift-rest", silent: true };
-    try {
-      if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-        navigator.serviceWorker.ready
-          .then((reg) => reg.showNotification("Rest over", { ...payload, renotify: true }))
-          .catch(() => new Notification("Rest over", payload));
-      } else {
-        new Notification("Rest over", payload);
-      }
-    } catch (e) {
-      console.warn("[timer] notification failed:", e);
-    }
-  }
-
-  // 3) Optional beep — OFF unless the user turned it on in Settings. Short WebAudio tone
-  //    only (see the file header for why — no <audio>, no Media Session API).
+  // Optional beep — OFF unless turned on in Settings. Short WebAudio tone only (no
+  // <audio>, no Media Session API).
   if (beepEnabled) playBeep();
 }
 

@@ -23,7 +23,7 @@
   <div id="summary"></div>
 
   <script type="module">
-    import { roundToStep, isSuccess, nextWeight, applyWorkoutResult, buildWorkout, effectiveSets, equivalentStartWeight } from "./program.js";
+    import { roundToStep, isSuccess, nextWeight, applyWorkoutResult, buildWorkout, effectiveSets, equivalentStartWeight, pendingItems, applyLoggedItems } from "./program.js";
     import { platesFor, warmupSets, estimate1RM } from "./calc.js";
 
     const out = document.getElementById("out");
@@ -193,6 +193,60 @@
       const next2 = applyWorkoutResult(state, "A", plainSquatEntries, 1800);
       assertEq("a direct Squat session doesn't touch smith_squat", next2.progress.smith_squat.currentWeight, 80);
       assertEq("...but does bump Squat itself", next2.progress.squat.currentWeight, 71.5);
+    }
+
+    // --- pendingItems: warm-ups then work sets, in exercise order ---
+    {
+      const entries = [
+        { exerciseId: "squat", warmupOn: true, warmups: [{ weight: 20, reps: 5, done: true }, { weight: 40, reps: 5, done: false }], sets: [{ reps: null }, { reps: null }] },
+        { exerciseId: "bench", warmupOn: false, warmups: [{ weight: 20, reps: 5, done: false }], sets: [{ reps: null }] },
+      ];
+      assertEq("pendingItems order (skips done warm-ups and hidden warm-ups)", pendingItems(entries), [
+        { exIdx: 0, kind: "warmup", idx: 1 },
+        { exIdx: 0, kind: "work", idx: 0 },
+        { exIdx: 0, kind: "work", idx: 1 },
+        { exIdx: 1, kind: "work", idx: 0 },
+      ]);
+      entries[0].sets[0].reps = 5;
+      assertEq("pendingItems drops leftover warm-ups once work sets start", pendingItems(entries)[0], { exIdx: 0, kind: "work", idx: 1 });
+    }
+
+    // --- applyLoggedItems: sets logged from the notification ---
+    {
+      const draft = {
+        startedAt: 1000,
+        entries: [{ exerciseId: "squat", warmups: [{ weight: 20, reps: 5, done: false }], sets: [{ reps: null }, { reps: null }] }],
+      };
+      const actions = [
+        { sessionId: 1000, exIdx: 0, exerciseId: "squat", kind: "warmup", idx: 0, reps: 5 },
+        { sessionId: 1000, exIdx: 0, exerciseId: "squat", kind: "work", idx: 0, reps: 5 },
+        { sessionId: 1000, exIdx: 0, exerciseId: "squat", kind: "work", idx: 0, reps: 5 }, // duplicate tap
+        { sessionId: 999, exIdx: 0, exerciseId: "squat", kind: "work", idx: 1, reps: 5 }, // old session
+        { sessionId: 1000, exIdx: 0, exerciseId: "bench", kind: "work", idx: 1, reps: 5 }, // lift was swapped
+      ];
+      const applied = applyLoggedItems(draft, actions);
+      assertEq("applyLoggedItems applies only valid, new actions", applied.length, 2);
+      assertEq("...warm-up marked done", draft.entries[0].warmups[0].done, true);
+      assertEq("...work sets as expected", draft.entries[0].sets.map((s) => s.reps), [5, null]);
+    }
+
+    // --- applyWorkoutResult keeps logged warm-ups in history ---
+    {
+      const state = {
+        settings: { deloadPct: 10, failuresBeforeDeload: 3 },
+        exercises: [{ id: "squat", name: "Squat", type: "barbell", increment: 2.5, deloadFloor: 20, setsReps: { sets: 5, reps: 5 }, startWeight: 20 }],
+        programDays: { A: ["squat"], B: ["squat"] },
+        progress: { squat: { currentWeight: 60, consecutiveFailures: 0 } },
+        history: [],
+        nextDay: "A",
+      };
+      const next = applyWorkoutResult(state, "A", [{
+        exerciseId: "squat", targetWeight: 60,
+        sets: [1, 2, 3, 4, 5].map(() => ({ reps: 5, target: 5 })),
+        warmups: [{ weight: 20, reps: 5 }],
+      }], 600);
+      assertEq("history keeps warm-ups", next.history[0].entries[0].warmups, [{ weight: 20, reps: 5 }]);
+      assertEq("warm-ups don't change progression", next.progress.squat.currentWeight, 62.5);
     }
 
     const summary = document.getElementById("summary");
