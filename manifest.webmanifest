@@ -8,6 +8,10 @@
   "orientation": "portrait",
   "background_color": "#121418",
   "theme_color": "#121418",
+  "shortcuts": [
+    { "name": "Back up to T620", "short_name": "Back up", "url": "./index.html#/backup",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ],
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

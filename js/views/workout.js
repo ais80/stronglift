@@ -4,7 +4,7 @@ import { platesFor, warmupSets } from "../calc.js";
 import { save, update } from "../state.js";
 import { fmtWeight, escapeHtml } from "../util.js";
 import { ACCESSORY_IDS } from "../../data/seed.js";
-import { backupToServer } from "../sync.js";
+import { backupAfterWorkout } from "../sync.js";
 import * as timer from "../timer.js";
 import * as restNotify from "../restNotify.js";
 
@@ -518,11 +518,11 @@ export async function render(container, state, params, ctx) {
       restNotify.clearPending();
       cleanup();
       if (next.settings.autoSyncAfterWorkout && next.settings.syncServerUrl) {
-        // Best-effort, silent: no error UI if the T620 isn't reachable right now (e.g.
-        // off home Tailscale) — Settings' "Backup now" is there for a manual retry.
-        backupToServer(next.settings)
-          .then(() => toast("Synced to T620."))
-          .catch(() => {});
+        // If the T620 isn't reachable right now (e.g. off Tailscale), the backup stays
+        // queued and retries automatically until it lands (see sync.js).
+        backupAfterWorkout(next.settings).then((ok) =>
+          toast(ok ? "Synced to T620." : "Saved. It'll back up to the T620 once it's reachable.")
+        );
       }
       ctx.navigate("home");
     }

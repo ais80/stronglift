@@ -25,13 +25,20 @@ funnel`, which would expose it publicly; don't use `funnel` here).
    cd stronglift/server
    ```
 
-2. **Create `server/.env`** (gitignored — never committed) with the API key. Use the
-   same value that's already in `server/.env` on this machine (`C:\Users\asifs\Downloads\
-   StrongLift\server\.env`) so both ends agree, or generate a fresh one:
+2. **Create `server/.env`** (gitignored — never committed) saying who may back up.
+   The simplest is **Tailscale sign-in, no API key**: list the Tailscale login your
+   phone uses (`tailscale whois <phone's 100.x IP>` shows it as `LoginName`):
    ```bash
-   echo "BACKUP_API_KEY=$(openssl rand -hex 24)" > .env
-   cat .env   # copy this value into the app's Settings -> T620 sync -> API key
+   echo "ALLOW_TAILSCALE_USERS=you@gmail.com" > .env
    ```
+   This works because `tailscale serve` tells the server which tailnet user sent each
+   request (the `Tailscale-User-Login` header, which it sets itself, so clients can't
+   forge it). `docker-compose.yml` publishes the port on `127.0.0.1` only, so the only
+   way in is through `tailscale serve`. Keep that binding; publishing the port on the
+   LAN would let anyone there send a fake header.
+
+   Optionally add `BACKUP_API_KEY=<long random string>` too. A request is accepted if it
+   has *either* an allowed Tailscale login *or* the key.
 
 3. **Build and run** (fits alongside the existing stack — `riven` has 8090, `riven-frontend` 8091,
    `fivextracker-server` 8092, `mediafusion-api` 8093, `macrotracker-frontend` 8094, Jellyfin (host-networked, invisible to `docker ps`) 8096 — this uses 8095):
@@ -59,7 +66,8 @@ funnel`, which would expose it publicly; don't use `funnel` here).
 5. **In the StrongLift app** (Settings → T620 sync): your phone needs Tailscale
    connected too. Set:
    - **Server URL**: `https://t620.tail76b543.ts.net:9453`
-   - **API key**: the value from this server's `.env`
+   - **API key**: leave blank (Tailscale sign-in). Only fill it in if you set
+     `BACKUP_API_KEY` and want to use it.
 
    Then **Backup now** to push, or **Restore from T620** to pull (this replaces
    everything on the current device — it asks for confirmation first).
@@ -86,8 +94,11 @@ No history of backups is kept — each `PUT` replaces the last one, same as
 ## Auto-sync
 
 Settings has an "Auto-sync after finishing a workout" toggle (on by default once a
-server URL is set). After **Finish workout**, it fires a background `PUT` — silent on
-failure (e.g. you're not on Tailscale right now), a small "Synced to T620" toast on
-success. There's no Wi-Fi-SSID trigger like `fivextracker`'s native auto-backup — a web
-page can't read the SSID — so this just tries every time and quietly no-ops if the
-server isn't reachable.
+server URL is set). After **Finish workout**, it tries a `PUT` straight away. If the
+T620 isn't reachable (e.g. you're not on Tailscale), the backup is **queued** and
+retried automatically: when the app opens or comes to the front, on a network change,
+every minute while it's open, and via Chrome's Background Sync with the app closed.
+
+A web page can't read the Wi-Fi SSID or switch a VPN, so the "on home Wi-Fi" trigger
+lives in MacroDroid: connect Tailscale, open the app's `#/backup` link (also the **Back
+up to T620** home-screen shortcut), wait, then disconnect. See `TESTING.md` §5.

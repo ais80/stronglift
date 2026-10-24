@@ -79,7 +79,50 @@ Tailscale must be connected on the phone.
 - [ ] Settings → T620 sync → **Backup now** shows success. If it says "Failed to
       fetch", allow **Local network access** for the site (see `server/README.md`).
 - [ ] Finish a workout with auto-sync on. A "Synced to T620" toast appears.
-- [ ] Disconnect Tailscale and finish a workout. There's no error, it just doesn't sync.
+- [ ] Disconnect Tailscale and finish a workout. It says *"Saved. It'll back up to the
+      T620 once it's reachable."* Settings → T620 sync shows that a backup is waiting.
+- [ ] Reconnect Tailscale and reopen StrongLift. Within a few seconds: "Backed up to
+      T620." (It also retries by itself on a network change and every minute while the
+      app is open, and Chrome retries in the background a few times.)
+
+**Back up automatically when you get home (MacroDroid).** On home Wi-Fi: connect
+Tailscale, open StrongLift's backup link, wait, then disconnect Tailscale. A web app
+can't see the Wi-Fi network or switch a VPN, and Samsung Routines can't switch
+Tailscale either, so this uses **MacroDroid** (free on the Play Store; Tasker works the
+same way).
+
+One-time checks:
+- [ ] Tailscale has been connected by hand at least once, so Android already allows it
+      as a VPN.
+- [ ] Tailscale is **not** set as Always-on VPN (Settings → Connections → More
+      connection settings → VPN → Tailscale ⚙). If it is, the disconnect step can't
+      work.
+- [ ] In StrongLift: Settings → T620 sync → **API key blank**. The server accepts your
+      Tailscale sign-in instead.
+
+Make the macro: **MacroDroid → Add Macro**.
+- [ ] **Trigger:** *Wi-Fi State Change* → *Connected to network* → your home Wi-Fi.
+- [ ] **Action 1, connect Tailscale:** *Send Intent* → Target **Broadcast**,
+      Action `com.tailscale.ipn.CONNECT_VPN`, Package `com.tailscale.ipn`,
+      Class `com.tailscale.ipn.IPNReceiver`.
+- [ ] **Action 2:** *Wait Before Next Action* → 5 seconds.
+- [ ] **Action 3, back up:** *Open Website* →
+      `https://ais80.github.io/stronglift/index.html#/backup`. It should open in the
+      installed StrongLift app. If it opens a Chrome tab instead, use *Launch Shortcut*
+      → StrongLift → **Back up to T620**. The app keeps retrying for about 40 seconds
+      while Tailscale connects.
+- [ ] **Action 4:** *Wait Before Next Action* → 45 seconds.
+- [ ] **Action 5, disconnect Tailscale:** *Send Intent*, same as Action 1 but with
+      Action `com.tailscale.ipn.DISCONNECT_VPN`.
+- [ ] **Action 6 (optional):** *Launch Home Screen*.
+- [ ] If the phone is usually locked when you walk in, add a first action *Wait Until
+      Trigger* → *Screen Unlocked*. Chrome may not run the backup behind the lock
+      screen.
+
+Test it:
+- [ ] Turn Tailscale off, finish a workout (you get the "Saved…" message), then turn
+      Wi-Fi off and on at home. Tailscale connects, StrongLift opens and shows "Backed
+      up to T620.", and about a minute later Tailscale disconnects.
 
 ## 6. Clean up
 

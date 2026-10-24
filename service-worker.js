@@ -1,10 +1,12 @@
 // service-worker.js — offline cache for the app shell. All paths are relative so this
 // works unmodified whether served from a domain root or a GitHub Pages /<repo>/ subpath
 // (the scope is wherever this file is registered from).
-const CACHE_NAME = "stronglift-cache-v6";
+const CACHE_NAME = "stronglift-cache-v8";
 // Sets logged from the lock-screen notification, waiting for the page to apply them.
 // Kept across app updates (activate below must not delete it).
 const PENDING_CACHE = "stronglift-pending";
+// A queued T620 backup for Background Sync (written by js/sync.js).
+const BACKUP_CACHE = "stronglift-backup";
 
 const PRECACHE_URLS = [
   "./",
@@ -45,7 +47,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== PENDING_CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== PENDING_CACHE && k !== BACKUP_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -220,4 +222,32 @@ self.addEventListener("notificationclick", (event) => {
   if (n.tag !== REST_TAG) return;
   if (event.action === "log") event.waitUntil(logFromNotification(n.data || {}));
   else event.waitUntil(openApp());
+});
+
+// ===== Background Sync: queued T620 backup =====
+// Chrome fires this when the phone is online, even with the app closed, and retries a
+// few times if it fails. The app's own retries (js/sync.js) cover anything after that.
+async function runQueuedBackup() {
+  const cache = await caches.open(BACKUP_CACHE);
+  const res = await cache.match("backup/pending");
+  if (!res) return;
+  const text = await res.text();
+  const job = JSON.parse(text);
+  const put = await fetch(job.url, {
+    method: "PUT",
+    headers: job.key ? { "Content-Type": "application/json", "X-Api-Key": job.key } : { "Content-Type": "application/json" },
+    body: job.body,
+  });
+  if (!put.ok) throw new Error(`HTTP ${put.status}`); // throwing asks Chrome to retry later
+  // Only clear it if the app hasn't queued a newer backup meanwhile.
+  const now = await cache.match("backup/pending");
+  if (now && (await now.text()) === text) {
+    await cache.delete("backup/pending");
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    clients.forEach((c) => c.postMessage({ type: "backup-done" }));
+  }
+}
+
+self.addEventListener("sync", (event) => {
+  if (event.tag === "stronglift-backup") event.waitUntil(runQueuedBackup());
 });

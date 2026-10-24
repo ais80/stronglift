@@ -20,11 +20,15 @@ services:
     container_name: stronglift-server
     restart: unless-stopped
     ports:
-      - "8095:8093"
+      # Localhost only: the way in is `tailscale serve` (HTTPS, tailnet-only), which is
+      # also what makes the Tailscale-User-Login header trustworthy. Nothing on the LAN
+      # can reach the container directly.
+      - "127.0.0.1:8095:8093"
     environment:
-      # Comes from .env (gitignored, not committed) — fails loudly rather than silently
-      # deploying with a weak default if it's missing.
-      BACKUP_API_KEY: ${BACKUP_API_KEY:?Set BACKUP_API_KEY in server/.env before deploying}
+      # Both come from .env (gitignored). At least one must be set; server.js refuses to
+      # start with neither.
+      BACKUP_API_KEY: ${BACKUP_API_KEY:-}
+      ALLOW_TAILSCALE_USERS: ${ALLOW_TAILSCALE_USERS:-}
     volumes:
       - stronglift-data:/data
 

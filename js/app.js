@@ -1,6 +1,7 @@
 // app.js — bootstrap + hash router. Hash routing is deliberate: it needs no server
 // rewrite rules, which keeps GitHub Pages' /<repo>/ subpath simple.
 import { load } from "./state.js";
+import { startAutoRetry, syncIfPending, queueBackup } from "./sync.js";
 
 const routes = {
   home: () => import("./views/home.js"),
@@ -53,10 +54,49 @@ export function navigate(path) {
   location.hash = path.startsWith("#") ? path : `#/${path}`;
 }
 
-window.addEventListener("hashchange", render);
+function toast(message) {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = message;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+// "#/backup" — the home-screen shortcut, or an automation (MacroDroid/Tasker) opening
+// it on home Wi-Fi right after connecting Tailscale. Tailscale can take a few seconds to
+// come up, so keep trying for a while before leaving it to the normal retries.
+const BACKUP_TRIES = 10;
+const BACKUP_TRY_GAP_MS = 4000;
+
+async function runBackupShortcut(settings) {
+  toast("Backing up to T620…");
+  await queueBackup(settings); // so a failure here still retries later
+  for (let i = 0; i < BACKUP_TRIES; i++) {
+    if ((await syncIfPending(settings)) !== false) return toast("Backed up to T620.");
+    await new Promise((r) => setTimeout(r, BACKUP_TRY_GAP_MS));
+  }
+  toast("Couldn't reach the T620. It'll keep retrying.");
+}
+
+function handleBackupShortcut() {
+  if (parseHash().name !== "backup") return false;
+  const settings = load().settings;
+  if (!settings.syncServerUrl) toast("Set up T620 sync in Settings first.");
+  else runBackupShortcut(settings);
+  history.replaceState(null, "", `#/${DEFAULT_ROUTE}`);
+  return true;
+}
+
+window.addEventListener("hashchange", () => {
+  handleBackupShortcut(); // swaps "#/backup" for Home, then render shows Home
+  render();
+});
 window.addEventListener("DOMContentLoaded", () => {
+  handleBackupShortcut();
   if (!location.hash) location.hash = `#/${DEFAULT_ROUTE}`;
   else render();
+  // Retry any queued T620 backup whenever there's a chance it'll get through.
+  startAutoRetry(() => load().settings, () => toast("Backed up to T620."));
 });
 
 // Apply stored theme preference immediately (before first paint of content).

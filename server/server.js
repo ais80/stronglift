@@ -3,25 +3,35 @@
 // server/Application.kt for the sibling implementation). Single user, so a flat JSON file
 // is enough; no database, no framework, no dependencies — just Node's built-in http/fs.
 //
-// Auth is a shared-secret header (X-Api-Key), not anything heavier, because this is meant
-// to sit on a private Tailscale network, never exposed to the open internet.
+// Auth: either of
+//  - Tailscale identity: `tailscale serve` adds a Tailscale-User-Login header naming the
+//    tailnet user who sent the request (and replaces any copy the client sent). If that
+//    login is in ALLOW_TAILSCALE_USERS, no API key is needed. This is only safe because
+//    docker-compose publishes the port on 127.0.0.1, so the only way in is through
+//    `tailscale serve`, never straight from the LAN with a forged header.
+//  - a shared-secret X-Api-Key header (BACKUP_API_KEY), optional once the above is set.
 //
 // CORS is wide open (Access-Control-Allow-Origin: *) because the page calling this can be
-// served from anywhere (GitHub Pages today, maybe elsewhere later) and the real gate is the
-// API key, not the browser's origin check.
+// served from anywhere (GitHub Pages today, maybe elsewhere later) and the real gate is
+// the auth above, not the browser's origin check.
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
 const PORT = Number(process.env.PORT) || 8093;
-const API_KEY = process.env.BACKUP_API_KEY;
+const API_KEY = process.env.BACKUP_API_KEY || "";
+// Comma-separated Tailscale logins (e.g. you@gmail.com) allowed without an API key.
+const ALLOWED_USERS = (process.env.ALLOW_TAILSCALE_USERS || "")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
 const BACKUP_DIR = process.env.BACKUP_DIR || path.join(__dirname, "data");
 const BACKUP_FILE = path.join(BACKUP_DIR, "backup.json");
 const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2MB — generous for a workout-log JSON blob
 
-if (!API_KEY) {
-  console.error("BACKUP_API_KEY is not set — refusing to start with no auth.");
+if (!API_KEY && !ALLOWED_USERS.length) {
+  console.error("Neither BACKUP_API_KEY nor ALLOW_TAILSCALE_USERS is set — refusing to start with no auth.");
   process.exit(1);
 }
 
@@ -44,7 +54,9 @@ function setCors(req, res) {
 }
 
 function authed(req) {
-  return req.headers["x-api-key"] === API_KEY;
+  if (API_KEY && req.headers["x-api-key"] === API_KEY) return true;
+  const login = String(req.headers["tailscale-user-login"] || "").toLowerCase();
+  return !!login && ALLOWED_USERS.includes(login);
 }
 
 function readBody(req) {
@@ -117,5 +129,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`stronglift-sync listening on :${PORT}, backups in ${BACKUP_DIR}`);
+  console.log(
+    `stronglift-sync listening on :${PORT}, backups in ${BACKUP_DIR}; auth: ` +
+      [API_KEY && "API key", ALLOWED_USERS.length && `Tailscale users (${ALLOWED_USERS.length})`].filter(Boolean).join(" or ")
+  );
 });

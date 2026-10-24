@@ -62,7 +62,10 @@ your own server (see **T620 sync** below).
 - **Installable PWA**: add to your phone's home screen, launches full-screen, works
   with no network connection.
 - **T620 sync (optional)**: back up / restore your data to a tiny self-hosted server on
-  your tailnet, and auto-backup after each workout. Setup in `server/README.md`.
+  your tailnet, and auto-backup after each workout. If the T620 isn't reachable, the
+  backup waits and retries until it lands. A MacroDroid macro can connect Tailscale on
+  home Wi-Fi, back up, and disconnect again; no API key is needed with Tailscale
+  sign-in. Setup in `server/README.md`.
 
 ## Run it locally
 

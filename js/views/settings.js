@@ -1,6 +1,6 @@
 // views/settings.js — units/plates/increments/timers/theme, JSON export/import, reset.
 import { update, exportJSON, importJSON, resetAll } from "../state.js";
-import { backupToServer, restoreFromServer } from "../sync.js";
+import { backupToServer, clearPendingBackup, hasPendingBackup, restoreFromServer } from "../sync.js";
 import { escapeHtml } from "../util.js";
 import * as timer from "../timer.js";
 
@@ -157,18 +157,24 @@ function buildHtml(state) {
         <input type="text" id="syncServerUrl" placeholder="https://t620.tail76b543.ts.net:9453" value="${escapeHtml(s.syncServerUrl)}">
       </div>
       <div class="field">
-        <label>API key</label>
+        <label>API key (leave blank if the server uses Tailscale sign-in)</label>
         <input type="text" id="syncApiKey" value="${escapeHtml(s.syncApiKey)}">
       </div>
       <label class="switch-row">
-        <span>Auto-sync after finishing a workout</span>
+        <span>Auto-sync after finishing a workout (retries until the T620 is reachable)</span>
         <input type="checkbox" id="autoSyncAfterWorkout" ${s.autoSyncAfterWorkout ? "checked" : ""}>
       </label>
       <div class="btn-row" style="margin-top:10px;">
         <button type="button" class="btn" id="syncBackupBtn">Backup now</button>
         <button type="button" class="btn" id="syncRestoreBtn">Restore from T620</button>
       </div>
-      <div id="syncStatus" class="card-sub" style="margin-top:8px;"></div>
+      <div id="syncStatus" class="card-sub" style="margin-top:8px;">${
+        hasPendingBackup() ? "A backup is waiting. It'll go as soon as the T620 is reachable." : ""
+      }</div>
+      <div class="card-sub" style="margin-top:8px;">
+        To back up automatically at home (connect Tailscale, back up, disconnect), set up
+        the MacroDroid macro in TESTING.md &sect;5.
+      </div>
     </div>
 
     <div class="card">
@@ -220,6 +226,7 @@ function wireEvents(container, state, ctx) {
     syncStatus.textContent = "Backing up…";
     try {
       await backupToServer(state.settings);
+      await clearPendingBackup();
       syncStatus.textContent = "Backed up just now.";
     } catch (err) {
       syncStatus.textContent = `Backup failed: ${err.message}`;
