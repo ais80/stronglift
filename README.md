@@ -1,7 +1,8 @@
 # StrongLift
 
 A simple, original 5×5 barbell workout tracker. Installable as a PWA, works offline,
-no account, no server — your data lives in your browser (`localStorage`).
+no account — your data lives in your browser (`localStorage`), with optional backup to
+your own server (see **T620 sync** below).
 
 > **About this build.** This is a clean-room implementation of the public 5×5 barbell
 > method (Reg Park / Bill Starr lineage) — not a clone of any specific commercial app.
@@ -51,6 +52,8 @@ no account, no server — your data lives in your browser (`localStorage`).
   rules, rest durations, theme (dark/light/auto), and full JSON export/import.
 - **Installable PWA**: add to your phone's home screen, launches full-screen, works
   with no network connection.
+- **T620 sync (optional)**: back up / restore your data to a tiny self-hosted server on
+  your tailnet, and auto-backup after each workout. Setup in `server/README.md`.
 
 ## Run it locally
 
@@ -69,14 +72,19 @@ Then open `http://localhost:8080/`.
 `js/test.html` runs the progression/plate-math logic in-page and prints pass/fail —
 open `http://localhost:8080/js/test.html` with the server above running.
 
+### On-device checks
+
+`TESTING.md` is a checklist for the things only the real phone can prove (media-safe
+timer, install/offline, Smith machine swaps, T620 sync).
+
 ## Install on your phone (Galaxy S24+)
 
 1. Open the deployed URL (see **Deploy** below) in Chrome on the phone.
 2. Chrome's menu → **Add to Home screen** / **Install app** (Chrome may also prompt
    automatically after a visit or two).
 3. Launch it from the home screen icon — it opens full-screen, no browser bar.
-4. It keeps working with no signal; it syncs nothing, so it only knows about workouts
-   logged on that device (use **Export JSON** in Settings to back up / move data).
+4. It keeps working with no signal. Data lives on that device; back it up with
+   **Settings → T620 sync** (needs Tailscale on the phone) or **Export JSON**.
 
 ### Galaxy Watch 4
 
@@ -117,7 +125,8 @@ See `BUILD_PLAN.md` for the full spec. Short version:
 
 - A real standalone Wear OS tile/app (today's watch support is notification-mirroring
   only).
-- Cloud sync / accounts / multi-device.
+- Live multi-device sync / accounts (today's T620 sync is a single-device backup and
+  restore, not a two-way merge).
 - Alternate programs (5/3/1, Madcow, etc.) alongside 5×5.
 - A "deload after a break" prompt for returning after time off.
 - Social/sharing features.
