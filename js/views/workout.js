@@ -19,12 +19,28 @@ function loadDraft(day, state) {
     if (raw) {
       const parsed = JSON.parse(raw);
       const fresh = parsed && Date.now() - parsed.startedAt < DRAFT_MAX_AGE_MS;
-      if (fresh && parsed.day === day && Array.isArray(parsed.entries)) return parsed;
+      if (fresh && parsed.day === day && Array.isArray(parsed.entries)) return refreshUntouched(parsed, state);
     }
   } catch (e) {
     console.warn("[workout] could not read draft, starting fresh:", e);
   }
   return buildDraft(day, state);
+}
+
+/**
+ * A draft keeps the weights it was built with, but those can change before any set is
+ * logged (a Google Sheet sync, an import, an edit in Lifts). Rebuild every entry that
+ * hasn't been started yet from the current state, so the screen matches Home.
+ */
+function refreshUntouched(draft, state) {
+  draft.entries = draft.entries.map((entry) => {
+    if (entryLocked(entry) || (entry.warmups || []).some((w) => w.done)) return entry;
+    const exercise = state.exercises.find((e) => e.id === entry.exerciseId);
+    if (!exercise) return entry;
+    const fresh = makeEntry(exercise, state, { isMainSlot: entry.isMainSlot, swappedFrom: entry.swappedFrom });
+    return { ...fresh, warmupOn: entry.warmupOn, scaledNote: entry.scaledNote };
+  });
+  return draft;
 }
 
 /** True once any set anywhere in the draft has a logged value — used to lock the

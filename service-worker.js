@@ -1,7 +1,7 @@
 // service-worker.js — offline cache for the app shell. All paths are relative so this
 // works unmodified whether served from a domain root or a GitHub Pages /<repo>/ subpath
 // (the scope is wherever this file is registered from).
-const CACHE_NAME = "stronglift-cache-v9";
+const CACHE_NAME = "stronglift-cache-v10";
 // Sets logged from the lock-screen notification, waiting for the page to apply them.
 // Kept across app updates (activate below must not delete it).
 const PENDING_CACHE = "stronglift-pending";
