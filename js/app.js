@@ -101,6 +101,17 @@ try {
 // Register the service worker (PWA offline support). Relative path — required
 // for the GitHub Pages /<repo>/ subpath to register with the right scope.
 if ("serviceWorker" in navigator) {
+  // A new version's service worker takes over mid-visit (skipWaiting + claim), but this
+  // page is still running the old code: reload once so it runs the new code right away.
+  // A workout in progress survives (draft and rest timer are in localStorage).
+  if (navigator.serviceWorker.controller) {
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+  }
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("service-worker.js").catch((err) => {
       console.warn("[app] service worker registration failed:", err);

@@ -1,7 +1,9 @@
 // service-worker.js — offline cache for the app shell. All paths are relative so this
 // works unmodified whether served from a domain root or a GitHub Pages /<repo>/ subpath
 // (the scope is wherever this file is registered from).
-const CACHE_NAME = "stronglift-cache-v10";
+const CACHE_NAME = "stronglift-cache-v11";
+// How long to wait for the network before falling back to the cached copy (gym signal).
+const NETWORK_TIMEOUT_MS = 3000;
 // Sets logged from the lock-screen notification, waiting for the page to apply them.
 // Kept across app updates (activate below must not delete it).
 const PENDING_CACHE = "stronglift-pending";
@@ -36,7 +38,9 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
+      // cache: "reload" skips the browser's HTTP cache (GitHub Pages sends max-age=600),
+      // which could otherwise hand a new version the previous version's files.
+      .then((cache) => cache.addAll(PRECACHE_URLS.map((url) => new Request(url, { cache: "reload" }))))
       .then(() => self.skipWaiting())
   );
 });
@@ -56,27 +60,25 @@ self.addEventListener("fetch", (event) => {
   // Other origins (the Google Sheet sync) go straight to the network, never the cache.
   if (new URL(req.url).origin !== location.origin) return;
 
-  // Page navigations: try the network first (so a redeploy shows up promptly), fall
-  // back to the cached shell when offline. Routing is hash-based, so every route is
-  // the same index.html — this one fallback covers the whole app.
-  if (req.mode === "navigate") {
-    event.respondWith(fetch(req).catch(() => caches.match("./index.html")));
-    return;
-  }
-
-  // Everything else: cache-first, then network (and cache what we fetch).
+  // Network first, so a redeploy shows up on the next open; the cached copy when offline
+  // or when the network is too slow. no-cache revalidates with the server (a cheap 304
+  // when nothing changed) instead of trusting the browser's 10-minute HTTP cache.
+  // Routing is hash-based, so every page navigation is the same index.html.
+  const fallback = () =>
+    caches.match(req).then((hit) => hit || (req.mode === "navigate" ? caches.match("./index.html") : undefined));
+  const network = fetch(req, { cache: "no-cache" }).then((res) => {
+    if (res && res.ok) {
+      const copy = res.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+    }
+    return res;
+  });
+  const timeout = new Promise((resolve) => setTimeout(resolve, NETWORK_TIMEOUT_MS));
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req)
-        .then((res) => {
-          if (res && res.ok && new URL(req.url).origin === location.origin) {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
+    Promise.race([network.catch(() => null), timeout]).then(async (res) => {
+      if (res) return res;
+      const hit = await fallback();
+      return hit || network; // nothing cached yet: keep waiting for the network
     })
   );
 });

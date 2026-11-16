@@ -29,14 +29,16 @@ function loadDraft(day, state) {
 
 /**
  * A draft keeps the weights it was built with, but those can change before any set is
- * logged (a Google Sheet sync, an import, an edit in Lifts). Rebuild every entry that
- * hasn't been started yet from the current state, so the screen matches Home.
+ * logged (a Google Sheet sync, an import, an edit in Lifts). Rebuild any entry whose
+ * weight is out of date and has no logged work set, so the screen matches Home. Ticked
+ * warm-ups for the old weight don't count; they'd be the wrong weights anyway.
  */
 function refreshUntouched(draft, state) {
   draft.entries = draft.entries.map((entry) => {
-    if (entryLocked(entry) || (entry.warmups || []).some((w) => w.done)) return entry;
+    if (entryLocked(entry)) return entry;
     const exercise = state.exercises.find((e) => e.id === entry.exerciseId);
-    if (!exercise) return entry;
+    const current = state.progress[entry.exerciseId];
+    if (!exercise || !current || current.currentWeight === entry.targetWeight) return entry;
     const fresh = makeEntry(exercise, state, { isMainSlot: entry.isMainSlot, swappedFrom: entry.swappedFrom });
     return { ...fresh, warmupOn: entry.warmupOn, scaledNote: entry.scaledNote };
   });
