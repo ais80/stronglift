@@ -28,9 +28,6 @@ export function defaultSettings() {
     soundOnTimerEnd: false, // off by default — vibration + notification are the primary alert
     notifyOnTimerEnd: false, // off until the user opts in from Settings (requests permission there)
     defaultSetScheme: "5x5", // '5x5' | '3x5' — shown/editable from Home and Workout
-    syncServerUrl: "", // e.g. https://t620.<tailnet>.ts.net:8443 — see server/README.md
-    syncApiKey: "",
-    autoSyncAfterWorkout: true, // best-effort, silent background PUT after Finish (never blocks/errors visibly)
   };
 }
 
@@ -306,5 +303,10 @@ export function seedState() {
     progress,
     history: [],
     nextDay: "A",
+    // Sync bookkeeping (see state.js mergeStates): when this device last changed the
+    // state (0 = untouched seed), and history ids deleted on purpose so a merge with the
+    // Google Sheet copy doesn't bring them back.
+    updatedAt: 0,
+    deletedHistoryIds: [],
   };
 }

@@ -1,8 +1,8 @@
 # StrongLift
 
 A simple, original 5×5 barbell workout tracker. Installable as a PWA, works offline,
-no account — your data lives in your browser (`localStorage`), with optional backup to
-your own server (see **T620 sync** below).
+no account — your data lives in your browser (`localStorage`) and syncs to a Google
+Sheet you own (see **Google Sheet sync** below).
 
 > **About this build.** This is a clean-room implementation of the public 5×5 barbell
 > method (Reg Park / Bill Starr lineage) — not a clone of any specific commercial app.
@@ -61,11 +61,11 @@ your own server (see **T620 sync** below).
   rules, rest durations, theme (dark/light/auto), and full JSON export/import.
 - **Installable PWA**: add to your phone's home screen, launches full-screen, works
   with no network connection.
-- **T620 sync (optional)**: back up / restore your data to a tiny self-hosted server on
-  your tailnet, and auto-backup after each workout. If the T620 isn't reachable, the
-  backup waits and retries until it lands. A MacroDroid macro can connect Tailscale on
-  home Wi-Fi, back up, and disconnect again; no API key is needed with Tailscale
-  sign-in. Setup in `server/README.md`.
+- **Google Sheet sync**: every time the app opens (and a few seconds after any change)
+  it reads your Google Sheet, merges it with the phone's data and writes it back, so a
+  wiped or new phone gets everything back from one sync link. The sheet also has
+  readable Workouts/Progress tabs and the last 50 snapshots. Setup in
+  `google-sheets/README.md`. (`server/` is the retired T620 backup server.)
 
 ## Run it locally
 
@@ -87,7 +87,7 @@ open `http://localhost:8080/js/test.html` with the server above running.
 ### On-device checks
 
 `TESTING.md` is a checklist for the things only the real phone can prove (media-safe
-timer, install/offline, Smith machine swaps, T620 sync).
+timer, install/offline, Smith machine swaps, Google Sheet sync).
 
 ## Install on your phone (Galaxy S24+)
 
@@ -95,8 +95,8 @@ timer, install/offline, Smith machine swaps, T620 sync).
 2. Chrome's menu → **Add to Home screen** / **Install app** (Chrome may also prompt
    automatically after a visit or two).
 3. Launch it from the home screen icon — it opens full-screen, no browser bar.
-4. It keeps working with no signal. Data lives on that device; back it up with
-   **Settings → T620 sync** (needs Tailscale on the phone) or **Export JSON**.
+4. It keeps working with no signal. Set up **Settings → Google Sheet sync** so the data
+   is never only on the phone; changes made offline go up next time it's online.
 
 ### Galaxy Watch 4
 
@@ -139,8 +139,7 @@ See `BUILD_PLAN.md` for the full spec. Short version:
   only).
 - Writing workouts to Samsung Health / Health Connect (a web app can't; it needs a
   native Android wrapper).
-- Live multi-device sync / accounts (today's T620 sync is a single-device backup and
-  restore, not a two-way merge).
+- Accounts / sign-in (the Google Sheet sync uses a secret link instead).
 - Alternate programs (5/3/1, Madcow, etc.) alongside 5×5.
 - A "deload after a break" prompt for returning after time off.
 - Social/sharing features.

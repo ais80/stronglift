@@ -1,5 +1,5 @@
 // views/history.js — session list + per-session detail (delete needs confirmation).
-import { update } from "../state.js";
+import { deleteHistory } from "../state.js";
 import { fmtWeight, fmtDate, fmtDuration, escapeHtml } from "../util.js";
 
 export async function render(container, state, params, ctx) {
@@ -102,7 +102,7 @@ function renderDetail(container, state, sessionId, ctx) {
   container.querySelector("#deleteBtn").addEventListener("click", () => {
     const ok = window.confirm("Delete this workout? This can't be undone.");
     if (!ok) return;
-    update((s) => ({ ...s, history: s.history.filter((h) => h.id !== sessionId) }));
+    deleteHistory(sessionId);
     ctx.navigate("history");
   });
 }

@@ -3,8 +3,8 @@
 These checks need the real phone (Galaxy S24+) and watch. The logic tests in
 `js/test.html` cover the maths, but they can't cover these. Tick each one off.
 
-**Before you start:** do an **Export JSON** in Settings (or **Backup now** to the T620)
-so you can restore your real data afterwards. Some tests below log practice sessions.
+**Before you start:** do an **Export JSON** in Settings so you can restore your real
+data afterwards. Some tests below log practice sessions.
 
 ## 1. Install and offline
 
@@ -72,62 +72,26 @@ Note your current **Squat** weight on Home first (say it's 60 kg).
       same; it only works in one direction.
 - [ ] *(Optional)* Repeat once for Bench (× 1.10) and OHP (× 1.15).
 
-## 5. T620 sync
+## 5. Google Sheet sync
 
-Tailscale must be connected on the phone.
+Set it up first with `google-sheets/README.md`.
 
-- [ ] Settings → T620 sync → **Backup now** shows success. If it says "Failed to
-      fetch", allow **Local network access** for the site (see `server/README.md`).
-- [ ] Finish a workout with auto-sync on. A "Synced to T620" toast appears.
-- [ ] Disconnect Tailscale and finish a workout. It says *"Saved. It'll back up to the
-      T620 once it's reachable."* Settings → T620 sync shows that a backup is waiting.
-- [ ] Reconnect Tailscale and reopen StrongLift. Within a few seconds: "Backed up to
-      T620." (It also retries by itself on a network change and every minute while the
-      app is open, and Chrome retries in the background a few times.)
-
-**Back up automatically when you get home (MacroDroid).** On home Wi-Fi: connect
-Tailscale, open StrongLift's backup link, wait, then disconnect Tailscale. A web app
-can't see the Wi-Fi network or switch a VPN, and Samsung Routines can't switch
-Tailscale either, so this uses **MacroDroid** (free on the Play Store; Tasker works the
-same way).
-
-One-time checks:
-- [ ] Tailscale has been connected by hand at least once, so Android already allows it
-      as a VPN.
-- [ ] Tailscale is **not** set as Always-on VPN (Settings → Connections → More
-      connection settings → VPN → Tailscale ⚙). If it is, the disconnect step can't
-      work.
-- [ ] In StrongLift: Settings → T620 sync → **API key blank**. The server accepts your
-      Tailscale sign-in instead.
-
-Make the macro: **MacroDroid → Add Macro**.
-- [ ] **Trigger:** *Wi-Fi State Change* → *Connected to network* → your home Wi-Fi.
-- [ ] **Action 1, connect Tailscale:** *Send Intent* → Target **Broadcast**,
-      Action `com.tailscale.ipn.CONNECT_VPN`, Package `com.tailscale.ipn`,
-      Class `com.tailscale.ipn.IPNReceiver`.
-- [ ] **Action 2:** *Wait Before Next Action* → 5 seconds.
-- [ ] **Action 3, back up:** *Open Website* →
-      `https://ais80.github.io/stronglift/index.html#/backup`. It should open in the
-      installed StrongLift app. If it opens a Chrome tab instead, use *Launch Shortcut*
-      → StrongLift → **Back up to T620**. The app keeps retrying for about 40 seconds
-      while Tailscale connects.
-- [ ] **Action 4:** *Wait Before Next Action* → 45 seconds.
-- [ ] **Action 5, disconnect Tailscale:** *Send Intent*, same as Action 1 but with
-      Action `com.tailscale.ipn.DISCONNECT_VPN`.
-- [ ] **Action 6 (optional):** *Launch Home Screen*.
-- [ ] If the phone is usually locked when you walk in, add a first action *Wait Until
-      Trigger* → *Screen Unlocked*. Chrome may not run the backup behind the lock
-      screen.
-
-Test it:
-- [ ] Turn Tailscale off, finish a workout (you get the "Saved…" message), then turn
-      Wi-Fi off and on at home. Tailscale connects, StrongLift opens and shows "Backed
-      up to T620.", and about a minute later Tailscale disconnects.
+- [ ] Settings → Google Sheet sync → paste the link → **Sync now**. It says "Last synced
+      …" and the sheet's Workouts and Progress tabs fill in.
+- [ ] Finish a workout. Within a few seconds a new row appears in Workouts, and Progress
+      shows the new weights.
+- [ ] Turn on airplane mode and finish a workout. Settings says "A change is waiting to
+      sync." Turn airplane mode off and reopen StrongLift: it syncs by itself.
+- [ ] **Wipe test** (do the Export JSON above first): Chrome → Settings → Site settings
+      → All sites → ais80.github.io → **Delete data**. Open StrongLift: it's back to
+      20 kg. Paste the sync link into Settings: your weights, warm-ups and history come
+      back.
 
 ## 6. Clean up
 
-- [ ] **Restore** from the T620 backup, or **Import** the JSON export, that you made at
-      the start. Deleting the practice sessions in History isn't enough, because it
+- [ ] **Import** the JSON export you made at the start (it then syncs to the sheet), or
+      pick a snapshot from before the tests on the sheet's Snapshots tab and use
+      **StrongLift → Restore the selected snapshot**. Deleting the practice sessions in History isn't enough, because it
       doesn't undo the weight increases they caused.
 - [ ] Check Home shows your real weights again.
 

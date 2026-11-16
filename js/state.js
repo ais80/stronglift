@@ -6,6 +6,13 @@ import { seedState, SCHEMA_VERSION, defaultSettings } from "../data/seed.js";
 const STORAGE_KEY = "stronglift.v1";
 
 let cache = null;
+const listeners = new Set();
+
+/** Call `cb(state)` after every local change (not after seeding or applying a merge). */
+export function onChange(cb) {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
 
 function safeParse(raw) {
   try {
@@ -75,6 +82,8 @@ export function migrate(state) {
   }
   s.history = Array.isArray(s.history) ? s.history : [];
   s.nextDay = s.nextDay === "A" || s.nextDay === "B" ? s.nextDay : "A";
+  s.updatedAt = Number(s.updatedAt) || 0;
+  s.deletedHistoryIds = Array.isArray(s.deletedHistoryIds) ? s.deletedHistoryIds : [];
   s.version = SCHEMA_VERSION;
 
   return s;
@@ -90,8 +99,9 @@ export function load() {
     console.warn("[state] localStorage unavailable, using in-memory state:", e);
   }
   if (!raw) {
+    // updatedAt stays 0, so a merge with the Google Sheet copy lets that win.
     cache = seedState();
-    save(cache);
+    save(cache, { touch: false });
     return cache;
   }
   const parsed = safeParse(raw);
@@ -99,16 +109,22 @@ export function load() {
   return cache;
 }
 
-/** Persist the given state (or the in-memory cache) to localStorage. */
-export function save(state) {
+/**
+ * Persist the given state to localStorage. `touch` (the default) marks it as a local
+ * change: stamps updatedAt and tells onChange listeners (the Google Sheet sync).
+ */
+export function save(state, { touch = true } = {}) {
+  if (touch) state.updatedAt = Date.now();
   cache = state;
+  let ok = true;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
     console.warn("[state] failed to save state (storage full or unavailable):", e);
-    return false;
+    ok = false;
   }
-  return true;
+  if (touch) listeners.forEach((cb) => cb(state));
+  return ok;
 }
 
 /** Mutate the cached state via an updater function, then persist. Returns the new state. */
@@ -120,9 +136,49 @@ export function update(updater) {
 }
 
 export function resetAll() {
-  cache = seedState();
-  save(cache);
-  return cache;
+  const old = load();
+  const fresh = seedState();
+  // Tombstone the old history too, or the next sync would merge it back in.
+  fresh.deletedHistoryIds = [...old.deletedHistoryIds, ...old.history.map((h) => h.id)];
+  fresh.syncedBaseAt = old.syncedBaseAt;
+  save(fresh);
+  return fresh;
+}
+
+/** Delete one history session, remembering its id so a sync doesn't bring it back. */
+export function deleteHistory(sessionId) {
+  return update((s) => ({
+    ...s,
+    history: s.history.filter((h) => h.id !== sessionId),
+    deletedHistoryIds: s.deletedHistoryIds.includes(sessionId) ? s.deletedHistoryIds : [...s.deletedHistoryIds, sessionId],
+  }));
+}
+
+/**
+ * Combine this device's state with the copy from the Google Sheet so nothing is lost.
+ * History is the union of both (by session id, minus anything deleted on either side).
+ * Everything else (progress, settings, lifts, next day) comes from whichever side changed
+ * last, except that a device that has never synced always takes the sheet's — that's
+ * the "phone's storage got wiped and reseeded at 20kg" case.
+ */
+export function mergeStates(local, remote) {
+  if (!remote || !Array.isArray(remote.history)) return local;
+  remote = migrate(remote);
+  const deleted = new Set([...local.deletedHistoryIds, ...remote.deletedHistoryIds]);
+  const byId = new Map();
+  for (const h of [...remote.history, ...local.history]) {
+    if (!deleted.has(h.id)) byId.set(h.id, h);
+  }
+  const history = [...byId.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const remoteWins = local.syncedBaseAt == null || remote.updatedAt >= local.updatedAt;
+  const base = remoteWins ? remote : local;
+  return {
+    ...base,
+    history,
+    deletedHistoryIds: [...deleted],
+    updatedAt: Math.max(local.updatedAt, remote.updatedAt),
+    syncedBaseAt: Math.max(local.updatedAt, remote.updatedAt),
+  };
 }
 
 export function exportJSON() {
@@ -135,6 +191,12 @@ export function importJSON(text) {
   if (!parsed) return { ok: false, error: "That file isn't valid JSON." };
   try {
     const migrated = migrate(parsed);
+    // An import is deliberate: it beats the sheet's copy on the next sync, and sessions
+    // on this device that the import doesn't have are tombstoned so they don't merge back.
+    const kept = new Set(migrated.history.map((h) => h.id));
+    const dropped = load().history.map((h) => h.id).filter((id) => !kept.has(id));
+    migrated.deletedHistoryIds = [...new Set([...migrated.deletedHistoryIds, ...dropped])];
+    migrated.syncedBaseAt = Date.now();
     save(migrated);
     return { ok: true };
   } catch (e) {

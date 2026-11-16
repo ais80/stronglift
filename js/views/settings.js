@@ -1,7 +1,7 @@
 // views/settings.js — units/plates/increments/timers/theme, JSON export/import, reset.
 import { update, exportJSON, importJSON, resetAll } from "../state.js";
-import { backupToServer, clearPendingBackup, hasPendingBackup, restoreFromServer } from "../sync.js";
-import { escapeHtml } from "../util.js";
+import { getLink, setLink, syncNow, lastSyncedAt, hasUnsynced } from "../sync.js";
+import { escapeHtml, fmtDate } from "../util.js";
 import * as timer from "../timer.js";
 
 const LB_PER_KG = 2.20462;
@@ -141,40 +141,21 @@ function buildHtml(state) {
     </div>
 
     <div class="card">
-      <div class="card-title">T620 sync</div>
+      <div class="card-title">Google Sheet sync</div>
       <div class="card-sub" style="margin-bottom:10px;">
-        Backs up/restores over your own network (Tailscale). Your phone needs Tailscale
-        connected for this to reach it. See <code>server/README.md</code> in the repo for
-        how to deploy the server.
-        <br><br>
-        <strong>First try will likely fail with "Failed to fetch"</strong> — that's
-        Chrome's own "Local network access" permission (same idea as camera/location),
-        not a bug. Allow it when prompted, or set it manually: tap the icon next to the
-        address bar → Permissions → Local network access → Allow, then try again.
+        Keeps your workouts in a Google Sheet. It syncs every time the app opens and a few
+        seconds after any change, so clearing the phone or a new phone loses nothing: paste
+        the link back in and everything comes back. Setup: <code>google-sheets/README.md</code>
+        in the repo.
       </div>
       <div class="field">
-        <label>Server URL</label>
-        <input type="text" id="syncServerUrl" placeholder="https://t620.tail76b543.ts.net:9453" value="${escapeHtml(s.syncServerUrl)}">
+        <label>Sync link (ends in <code>/exec?key=…</code>). Keep a copy somewhere safe.</label>
+        <input type="text" id="sheetLink" placeholder="https://script.google.com/macros/s/…/exec?key=…" value="${escapeHtml(getLink())}">
       </div>
-      <div class="field">
-        <label>API key (leave blank if the server uses Tailscale sign-in)</label>
-        <input type="text" id="syncApiKey" value="${escapeHtml(s.syncApiKey)}">
-      </div>
-      <label class="switch-row">
-        <span>Auto-sync after finishing a workout (retries until the T620 is reachable)</span>
-        <input type="checkbox" id="autoSyncAfterWorkout" ${s.autoSyncAfterWorkout ? "checked" : ""}>
-      </label>
       <div class="btn-row" style="margin-top:10px;">
-        <button type="button" class="btn" id="syncBackupBtn">Backup now</button>
-        <button type="button" class="btn" id="syncRestoreBtn">Restore from T620</button>
+        <button type="button" class="btn" id="syncNowBtn">Sync now</button>
       </div>
-      <div id="syncStatus" class="card-sub" style="margin-top:8px;">${
-        hasPendingBackup() ? "A backup is waiting. It'll go as soon as the T620 is reachable." : ""
-      }</div>
-      <div class="card-sub" style="margin-top:8px;">
-        To back up automatically at home (connect Tailscale, back up, disconnect), set up
-        the MacroDroid macro in TESTING.md &sect;5.
-      </div>
+      <div id="syncStatus" class="card-sub" style="margin-top:8px;">${syncStatusText()}</div>
     </div>
 
     <div class="card">
@@ -209,51 +190,31 @@ function wireEvents(container, state, ctx) {
     state = update((s) => ({ ...s, settings: { ...s.settings, defaultSetScheme: e.target.value } }));
   });
 
-  container.querySelector("#syncServerUrl").addEventListener("change", (e) => {
-    state = update((s) => ({ ...s, settings: { ...s.settings, syncServerUrl: e.target.value.trim() } }));
-  });
-  container.querySelector("#syncApiKey").addEventListener("change", (e) => {
-    state = update((s) => ({ ...s, settings: { ...s.settings, syncApiKey: e.target.value.trim() } }));
-  });
-  container.querySelector("#autoSyncAfterWorkout").addEventListener("change", (e) => {
-    state = update((s) => ({ ...s, settings: { ...s.settings, autoSyncAfterWorkout: e.target.checked } }));
-  });
-
   const syncStatus = container.querySelector("#syncStatus");
-  container.querySelector("#syncBackupBtn").addEventListener("click", async (e) => {
-    const btn = e.target;
-    btn.disabled = true;
-    syncStatus.textContent = "Backing up…";
-    try {
-      await backupToServer(state.settings);
-      await clearPendingBackup();
-      syncStatus.textContent = "Backed up just now.";
-    } catch (err) {
-      syncStatus.textContent = `Backup failed: ${err.message}`;
-    } finally {
-      btn.disabled = false;
+  async function runSync() {
+    syncStatus.textContent = "Syncing…";
+    const result = await syncNow();
+    if (!result.ok) {
+      syncStatus.textContent = `Sync failed: ${result.error}`;
+      return;
     }
-  });
-  container.querySelector("#syncRestoreBtn").addEventListener("click", async (e) => {
-    const ok = window.confirm("Replace everything on this device with the T620's backup? This can't be undone.");
-    if (!ok) return;
-    const btn = e.target;
-    btn.disabled = true;
-    syncStatus.textContent = "Restoring…";
-    try {
-      const result = await restoreFromServer(state.settings);
-      if (result.ok) {
-        window.alert("Restore complete.");
-        location.reload();
-      } else {
-        syncStatus.textContent = result.error || "Restore failed.";
-      }
-    } catch (err) {
-      syncStatus.textContent = `Restore failed: ${err.message}`;
-    } finally {
-      btn.disabled = false;
+    if (result.changed) {
+      location.reload(); // show what came down from the sheet
+      return;
     }
+    syncStatus.textContent = syncStatusText();
+  }
+  container.querySelector("#sheetLink").addEventListener("change", (e) => {
+    const link = e.target.value.trim();
+    if (link && !/^https:\/\/script\.google(usercontent)?\.com\/.+key=/.test(link)) {
+      syncStatus.textContent = "That doesn't look like the sync link: it should start https://script.google.com/ and end with ?key=…";
+      return;
+    }
+    setLink(link);
+    if (link) runSync();
+    else syncStatus.textContent = syncStatusText();
   });
+  container.querySelector("#syncNowBtn").addEventListener("click", runSync);
 
   container.querySelector("#soundOnTimerEnd").addEventListener("change", (e) => {
     state = update((s) => ({ ...s, settings: { ...s.settings, soundOnTimerEnd: e.target.checked } }));
@@ -363,6 +324,13 @@ function wireEvents(container, state, ctx) {
     resetAll();
     location.reload();
   });
+}
+
+function syncStatusText() {
+  if (!getLink()) return "Not set up. Your data is only on this phone.";
+  const last = lastSyncedAt();
+  const when = last ? `Last synced ${fmtDate(new Date(last).toISOString())} ${new Date(last).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` : "Not synced yet.";
+  return hasUnsynced() ? `${when} A change is waiting to sync.` : when;
 }
 
 function bindNumber(container, selector, onChange) {

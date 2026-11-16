@@ -25,6 +25,8 @@
   <script type="module">
     import { roundToStep, isSuccess, nextWeight, applyWorkoutResult, buildWorkout, effectiveSets, equivalentStartWeight, pendingItems, applyLoggedItems } from "./program.js";
     import { platesFor, warmupSets, estimate1RM } from "./calc.js";
+    import { mergeStates } from "./state.js";
+    import { seedState } from "../data/seed.js";
 
     const out = document.getElementById("out");
     let pass = 0, fail = 0;
@@ -247,6 +249,37 @@
       }], 600);
       assertEq("history keeps warm-ups", next.history[0].entries[0].warmups, [{ weight: 20, reps: 5 }]);
       assertEq("warm-ups don't change progression", next.progress.squat.currentWeight, 62.5);
+    }
+
+    // --- mergeStates: Google Sheet sync ---
+    {
+      const session = (id, date) => ({ id, date, day: "A", entries: [] });
+      const sheet = { ...seedState(), updatedAt: 1000, history: [session("w_1", "2026-11-01"), session("w_2", "2026-11-03")] };
+      sheet.progress = { ...sheet.progress, squat: { currentWeight: 60, consecutiveFailures: 0 } };
+
+      // A wiped phone (fresh seed, never synced) takes the sheet's weights and history.
+      const wiped = mergeStates(seedState(), sheet);
+      assertEq("wiped phone gets the sheet's weight", wiped.progress.squat.currentWeight, 60);
+      assertEq("wiped phone gets the sheet's history", wiped.history.map((h) => h.id), ["w_2", "w_1"]);
+
+      // ...even if it logged a workout before the first sync: weights from the sheet, both histories kept.
+      const busy = { ...seedState(), updatedAt: 5000, history: [session("w_3", "2026-11-05")] };
+      const busyMerged = mergeStates(busy, sheet);
+      assertEq("never-synced phone still takes the sheet's weight", busyMerged.progress.squat.currentWeight, 60);
+      assertEq("never-synced phone keeps its own session too", busyMerged.history.map((h) => h.id), ["w_3", "w_2", "w_1"]);
+
+      // A synced phone with a newer change wins the weights.
+      const phone = { ...seedState(), updatedAt: 2000, syncedBaseAt: 1000, history: [session("w_1", "2026-11-01")] };
+      phone.progress = { ...phone.progress, squat: { currentWeight: 62.5, consecutiveFailures: 0 } };
+      const newer = mergeStates(phone, sheet);
+      assertEq("newer phone keeps its weight", newer.progress.squat.currentWeight, 62.5);
+      assertEq("history is the union", newer.history.map((h) => h.id), ["w_2", "w_1"]);
+      assertEq("merged is marked synced", newer.syncedBaseAt, 2000);
+
+      // A session deleted on the phone stays deleted.
+      const deleted = mergeStates({ ...phone, history: [], deletedHistoryIds: ["w_1"] }, sheet);
+      assertEq("deleted session isn't merged back", deleted.history.map((h) => h.id), ["w_2"]);
+      assertEq("empty sheet leaves the phone alone", mergeStates(phone, null), phone);
     }
 
     const summary = document.getElementById("summary");

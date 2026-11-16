@@ -1,7 +1,7 @@
 // app.js — bootstrap + hash router. Hash routing is deliberate: it needs no server
 // rewrite rules, which keeps GitHub Pages' /<repo>/ subpath simple.
-import { load } from "./state.js";
-import { startAutoRetry, syncIfPending, queueBackup } from "./sync.js";
+import { load, onChange } from "./state.js";
+import { getLink, schedulePush, startAutoSync, syncNow } from "./sync.js";
 
 const routes = {
   home: () => import("./views/home.js"),
@@ -62,41 +62,30 @@ function toast(message) {
   setTimeout(() => el.remove(), 2600);
 }
 
-// "#/backup" — the home-screen shortcut, or an automation (MacroDroid/Tasker) opening
-// it on home Wi-Fi right after connecting Tailscale. Tailscale can take a few seconds to
-// come up, so keep trying for a while before leaving it to the normal retries.
-const BACKUP_TRIES = 10;
-const BACKUP_TRY_GAP_MS = 4000;
+// How long the first screen waits for the Google Sheet before showing what's on the
+// phone (it re-renders if the sheet turns up later with something newer).
+const FIRST_SYNC_WAIT_MS = 4000;
 
-async function runBackupShortcut(settings) {
-  toast("Backing up to T620…");
-  await queueBackup(settings); // so a failure here still retries later
-  for (let i = 0; i < BACKUP_TRIES; i++) {
-    if ((await syncIfPending(settings)) !== false) return toast("Backed up to T620.");
-    await new Promise((r) => setTimeout(r, BACKUP_TRY_GAP_MS));
-  }
-  toast("Couldn't reach the T620. It'll keep retrying.");
-}
-
-function handleBackupShortcut() {
-  if (parseHash().name !== "backup") return false;
-  const settings = load().settings;
-  if (!settings.syncServerUrl) toast("Set up T620 sync in Settings first.");
-  else runBackupShortcut(settings);
-  history.replaceState(null, "", `#/${DEFAULT_ROUTE}`);
-  return true;
-}
-
-window.addEventListener("hashchange", () => {
-  handleBackupShortcut(); // swaps "#/backup" for Home, then render shows Home
+/** Re-render with merged data, except mid-workout, where it would reset the screen. */
+function onSheetChanged() {
+  if (parseHash().name === "workout") return;
   render();
-});
-window.addEventListener("DOMContentLoaded", () => {
-  handleBackupShortcut();
+  toast("Updated from your Google Sheet.");
+}
+
+window.addEventListener("hashchange", render);
+window.addEventListener("DOMContentLoaded", async () => {
+  // Ask Chrome not to evict this app's storage when the phone is low on space.
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  onChange(() => schedulePush());
+  if (getLink()) {
+    const first = syncNow();
+    const result = await Promise.race([first, new Promise((r) => setTimeout(() => r(null), FIRST_SYNC_WAIT_MS))]);
+    if (!result) first.then((late) => late.ok && late.changed && onSheetChanged());
+  }
   if (!location.hash) location.hash = `#/${DEFAULT_ROUTE}`;
   else render();
-  // Retry any queued T620 backup whenever there's a chance it'll get through.
-  startAutoRetry(() => load().settings, () => toast("Backed up to T620."));
+  startAutoSync(onSheetChanged);
 });
 
 // Apply stored theme preference immediately (before first paint of content).

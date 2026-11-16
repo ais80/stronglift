@@ -1,144 +1,166 @@
-// sync.js — talks to the T620 backup server (see server/README.md). Same shape as the
-// Settings screen's existing file Export/Import, just over the network instead of a
-// downloaded file: PUT the whole exported state, GET it back to restore.
-import { exportJSON, importJSON } from "./state.js";
+// sync.js — keeps this device and a Google Sheet in step, so clearing the phone's
+// storage (or a new phone) never loses anything. The sheet runs a small Apps Script
+// web app (google-sheets/Code.gs) that stores the whole state as JSON plus readable
+// Workouts/Progress tabs and recent snapshots.
+//
+// Every sync is pull -> merge -> push: read the sheet's copy, merge it with this
+// device's (state.mergeStates: histories are unioned, the newer side wins the rest),
+// save the result here, then write it back. It runs when the app opens, when it comes
+// back to the front, a couple of seconds after any change, and on reconnecting. Nothing
+// is ever pushed without pulling first, so a freshly wiped phone can't overwrite the
+// sheet with an empty 20kg state.
+//
+// The sync link lives under its own localStorage key, outside the app state, and is
+// the one thing to keep somewhere safe: paste it back in after a wipe and everything
+// comes back.
+import { load, save, mergeStates } from "./state.js";
 
-function baseUrl(settings) {
-  const url = (settings.syncServerUrl || "").trim();
-  if (!url) throw new Error("No sync server configured — set it in Settings.");
-  return url.replace(/\/+$/, "");
-}
-
-// The key is optional: with Tailscale sign-in on the server (see server/README.md) the
-// request is authorised by who sent it, so no header is needed.
-function authHeaders(settings, extra = {}) {
-  const key = (settings.syncApiKey || "").trim();
-  return key ? { ...extra, "X-Api-Key": key } : extra;
-}
-
-export async function backupToServer(settings) {
-  const res = await fetch(`${baseUrl(settings)}/backup`, {
-    method: "PUT",
-    headers: authHeaders(settings, { "Content-Type": "application/json" }),
-    body: exportJSON(),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-}
-
-/** Returns the same { ok, error? } shape as state.importJSON(). */
-export async function restoreFromServer(settings) {
-  const res = await fetch(`${baseUrl(settings)}/backup`, {
-    method: "GET",
-    headers: authHeaders(settings),
-  });
-  if (res.status === 404) return { ok: false, error: "No backup found on the server yet." };
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const text = await res.text();
-  return importJSON(text);
-}
-
-// ===== Retry until the T620 is reachable =====
-// A web page can't see which Wi-Fi network it's on, so instead of "back up when I get
-// home", a backup that can't reach the T620 stays queued and is retried at every
-// chance: app opened or brought to the front, network change (e.g. 4G -> home Wi-Fi),
-// every minute while open, and via Chrome's Background Sync while the app is closed.
-// The first attempt after the T620 becomes reachable wins.
-
-const PENDING_KEY = "stronglift.sync.pending";
-const BG_CACHE = "stronglift-backup"; // must match service-worker.js
-const BG_TAG = "stronglift-backup";
+const LINK_KEY = "stronglift.sheets.link";
+const DIRTY_KEY = "stronglift.sheets.dirty"; // a local change hasn't reached the sheet yet
+const LAST_KEY = "stronglift.sheets.last"; // when the last sync succeeded
+const PUSH_DELAY_MS = 2000;
 const RETRY_MS = 60 * 1000;
+
 let inFlight = null;
+let pushTimer = null;
+const statusListeners = new Set();
 
-export function hasPendingBackup() {
+function getItem(key) {
   try {
-    return !!localStorage.getItem(PENDING_KEY);
+    return localStorage.getItem(key);
   } catch (e) {
-    return false;
+    return null;
+  }
+}
+function setItem(key, value) {
+  try {
+    if (value == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch (e) {
+    /* ignore */
   }
 }
 
-/** Queue a backup, and hand a copy to the service worker for Background Sync. */
-export async function queueBackup(settings) {
-  try {
-    localStorage.setItem(PENDING_KEY, String(Date.now()));
-  } catch (e) {
-    /* ignore */
-  }
-  if (!("caches" in window) || !("serviceWorker" in navigator)) return;
-  try {
-    const cache = await caches.open(BG_CACHE);
-    const job = { url: `${baseUrl(settings)}/backup`, key: settings.syncApiKey || "", body: exportJSON() };
-    await cache.put("backup/pending", new Response(JSON.stringify(job), { headers: { "Content-Type": "application/json" } }));
-    const reg = await navigator.serviceWorker.ready;
-    if (reg.sync) await reg.sync.register(BG_TAG);
-  } catch (e) {
-    /* Background Sync unavailable — the in-app retries still cover it */
-  }
+export function getLink() {
+  return getItem(LINK_KEY) || "";
 }
 
-export async function clearPendingBackup() {
+/** Save the sync link (the Apps Script web app URL ending ?key=...). Empty turns sync off. */
+export function setLink(link) {
+  setItem(LINK_KEY, (link || "").trim() || null);
+}
+
+export function lastSyncedAt() {
+  return Number(getItem(LAST_KEY)) || 0;
+}
+
+export function hasUnsynced() {
+  return !!getItem(DIRTY_KEY);
+}
+
+/** `cb(status)` with { state: 'syncing'|'ok'|'error'|'off', message?, at? }. */
+export function onStatus(cb) {
+  statusListeners.add(cb);
+  return () => statusListeners.delete(cb);
+}
+function emit(status) {
+  statusListeners.forEach((cb) => cb(status));
+}
+
+function withAction(link, action) {
+  const url = new URL(link);
+  url.searchParams.set("action", action);
+  return url.toString();
+}
+
+async function call(link, action, body) {
+  // text/plain keeps this a "simple" request: Apps Script can't answer a CORS preflight.
+  const res = await fetch(withAction(link, action), body === undefined
+    ? { method: "GET" }
+    : { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  let data;
   try {
-    localStorage.removeItem(PENDING_KEY);
+    data = await res.json();
   } catch (e) {
-    /* ignore */
+    // A Google sign-in page instead of JSON: the web app isn't deployed for "Anyone".
+    throw new Error("The sheet didn't answer with data. Check it's deployed with access: Anyone.");
   }
-  try {
-    if ("caches" in window) await (await caches.open(BG_CACHE)).delete("backup/pending");
-  } catch (e) {
-    /* ignore */
-  }
+  if (!data.ok) throw new Error(data.error || "The sheet refused the request.");
+  return data;
+}
+
+/** The state minus sync bookkeeping, for "did the merge change anything visible?" */
+function shown(state) {
+  return JSON.stringify({ ...state, updatedAt: 0, syncedBaseAt: 0 });
 }
 
 /**
- * Back up now if something is queued (or `force`). Resolves true on success, false on
- * failure, null if there was nothing to do. Never throws.
+ * Pull, merge, push. Resolves { ok, changed } — `changed` is true when the sheet's copy
+ * changed what this device shows — or { ok: false, error }. Never throws.
  */
-export function syncIfPending(settings, { force = false } = {}) {
-  if (!settings.syncServerUrl || (!force && !hasPendingBackup())) return Promise.resolve(null);
+export function syncNow() {
+  const link = getLink();
+  if (!link) {
+    emit({ state: "off" });
+    return Promise.resolve({ ok: false, error: "Sync isn't set up." });
+  }
   if (inFlight) return inFlight;
-  inFlight = backupToServer(settings)
-    .then(async () => {
-      await clearPendingBackup();
-      return true;
-    })
-    .catch(() => false)
-    .finally(() => {
+  emit({ state: "syncing" });
+  inFlight = (async () => {
+    try {
+      const local = load();
+      const { state: remote } = await call(link, "get");
+      let merged;
+      if (remote) {
+        merged = mergeStates(local, remote);
+      } else {
+        // Empty sheet: this device's data becomes the first copy.
+        merged = { ...local, syncedBaseAt: local.updatedAt };
+      }
+      const changed = shown(merged) !== shown(local);
+      save(merged, { touch: false });
+      setItem(DIRTY_KEY, null);
+      if (!remote || JSON.stringify(remote) !== JSON.stringify(merged)) await call(link, "put", merged);
+      setItem(LAST_KEY, String(Date.now()));
+      emit({ state: "ok", at: Date.now() });
+      return { ok: true, changed };
+    } catch (e) {
+      emit({ state: "error", message: e.message });
+      return { ok: false, error: e.message };
+    } finally {
       inFlight = null;
-    });
+    }
+  })();
   return inFlight;
 }
 
-/** Queue a backup and try it straight away (used after finishing a workout). */
-export async function backupAfterWorkout(settings) {
-  await queueBackup(settings);
-  return syncIfPending(settings);
+/** Mark a local change and push it shortly (batches quick successive edits). */
+export function schedulePush() {
+  setItem(DIRTY_KEY, String(Date.now()));
+  if (!getLink()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => syncNow().then(notifyChanged), PUSH_DELAY_MS);
 }
 
-/** Start the retry triggers. `getSettings` returns current settings; `onSynced` runs after a queued backup lands. */
-export function startAutoRetry(getSettings, onSynced) {
-  const attempt = async () => {
-    if (!hasPendingBackup()) return;
-    if ((await syncIfPending(getSettings())) === true && onSynced) onSynced();
-  };
-  attempt();
+let onRemoteChange = null;
+function notifyChanged(result) {
+  if (result && result.ok && result.changed && onRemoteChange) onRemoteChange();
+}
+
+/**
+ * Start syncing: now, whenever the app comes back to the front or the network returns,
+ * and every minute while something is waiting. `onChanged` runs when the sheet's copy
+ * changed what's on screen.
+ */
+export function startAutoSync(onChanged) {
+  onRemoteChange = onChanged;
+  const attempt = () => syncNow().then(notifyChanged);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") attempt();
   });
   window.addEventListener("online", attempt);
-  if (navigator.connection && navigator.connection.addEventListener) {
-    navigator.connection.addEventListener("change", attempt);
-  }
   setInterval(() => {
-    if (document.visibilityState === "visible") attempt();
+    if (document.visibilityState === "visible" && hasUnsynced()) attempt();
   }, RETRY_MS);
-  if ("serviceWorker" in navigator) {
-    // The service worker's Background Sync got there first: drop the queued flag.
-    navigator.serviceWorker.addEventListener("message", (event) => {
-      if (event.data && event.data.type === "backup-done") {
-        clearPendingBackup();
-        if (onSynced) onSynced();
-      }
-    });
-  }
 }
